@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-source "$(dirname "$0")/../.env"
 TODAY_STRING=$(date +"%Y-%m-%d")
 
 rg --no-filename "^- \[ \].*@\[\[$TODAY_STRING\]\]" "$NOTES_DIRECTORY" \
