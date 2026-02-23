@@ -33,7 +33,7 @@ var (
 		"K20-1": {}, "K20-2": {}, "K20-3": {}, // 19th St Oakland platforms
 	}
 	DestStopIDs = map[string]struct{}{
-		"M80-1": {}, "M80-2": {}, // Montgomery St platforms
+		"M20-1": {}, "M20-2": {}, // Montgomery St platforms
 	}
 	AllowedRouteIDs = map[string]struct{}{
 		"1": {}, "7": {}, // Yellow-S / Red-S
