@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+source "$(dirname "$0")/../.env"
+TODAY_STRING=$(date +"%m-%d")
+rg -0 -l "^birthday: [0-9]{4}-$TODAY_STRING" "$NOTES_DIRECTORY"/people/* \
+  | xargs -0 -r basename -a \
+  | sed 's/\.md$//' \
+  | jq -Rn '[inputs | select(length > 0)]'
