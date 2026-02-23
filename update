@@ -3,14 +3,21 @@ PROJECT_DIRECTORY="/home/tjmisko/Projects/GooseTRM"
 DATE_STRING=$(date +"%A, %d %B %Y")
 WEEK_STRING=$(date +"Week %V")
 
+BIRTHDAYS=$(./birthday/fetch)
+TASKS=$(./tasks/fetch)
+
 ./BART/bart | jq -Rn \
   --arg greetings "Greetings from retend.app" \
   --arg date "$DATE_STRING" \
-  --arg week "$WEEK_STRING" '
+  --arg week "$WEEK_STRING" \
+  --argjson birthdays "$BIRTHDAYS" \
+  --argjson tasks "$TASKS" '
 {
   greetings: $greetings,
   date: $date,
   week: $week,
+  birthdays: $birthdays,
+  tasks: $tasks,
   bart: (
     [ inputs | select(length > 0) ]
   )

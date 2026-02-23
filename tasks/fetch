@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+source "$(dirname "$0")/../.env"
+TODAY_STRING=$(date +"%Y-%m-%d")
+
+rg --no-filename "^- \[ \].*@\[\[$TODAY_STRING\]\]" "$NOTES_DIRECTORY" \
+  | sed 's/^- \[ \] //' \
+  | sed 's/ *(@\[\[.*$//' \
+  | sed 's/\[\[/<b>/g' \
+  | sed 's/\]\]/<\/b>/g' \
+  | jq -Rn '[inputs | select(length > 0)]'
