@@ -6,17 +6,30 @@ set +a
 DATE_STRING=$(date +"%A, %d %B %Y")
 WEEK_STRING=$(date +"Week %V")
 
-BIRTHDAYS=$(./birthday/fetch)
-TASKS=$(./tasks/fetch)
-WEATHER=$(./weather/fetch)
+validate_json() {
+  local raw="$1"
+  local fallback="$2"
+  if printf '%s' "$raw" | jq empty 2>/dev/null; then
+    printf '%s' "$raw"
+  else
+    printf '%s' "$fallback"
+  fi
+}
 
-./BART/bart | jq -Rn \
+BIRTHDAYS=$(validate_json "$(./birthday/fetch)" '[]')
+TASKS=$(validate_json "$(./tasks/fetch)" '[]')
+WEATHER=$(validate_json "$(./weather/fetch)" '{}')
+
+BART=$(validate_json "$(./BART/bart)" '[]')
+
+jq -n \
   --arg greetings "Greetings from retend.app" \
   --arg date "$DATE_STRING" \
   --arg week "$WEEK_STRING" \
   --argjson birthdays "$BIRTHDAYS" \
   --argjson tasks "$TASKS" \
-  --argjson weather "$WEATHER" '
+  --argjson weather "$WEATHER" \
+  --argjson bart "$BART" '
 {
   greetings: $greetings,
   date: $date,
@@ -24,8 +37,6 @@ WEATHER=$(./weather/fetch)
   birthdays: $birthdays,
   tasks: $tasks,
   weather: $weather,
-  bart: (
-    [ inputs | select(length > 0) ]
-  )
+  bart: $bart
 }
 ' > "$PROJECT_DIRECTORY"/trmnl.json

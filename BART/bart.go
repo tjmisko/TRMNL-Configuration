@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -245,25 +246,38 @@ func nextNTripsWithTimes(feed *gtfs.FeedMessage, tripToRoute map[string]string, 
 	return out
 }
 
+type tripJSON struct {
+	Depart string `json:"depart"`
+	Arrive string `json:"arrive"`
+}
+
 func main() {
 	tripToRoute, err := loadTripToRoute(TripsTXT)
 	if err != nil {
-		log.Fatalf("failed to load trips.txt: %v", err)
+		fmt.Fprintln(os.Stderr, err)
+		fmt.Println("[]")
+		return
 	}
 
 	feed, err := fetchFeed(GTFSRTTripUpdatesURL)
 	if err != nil {
-		log.Fatalf("failed to fetch GTFS-RT: %v", err)
-	}
-
-	trips := nextNTripsWithTimes(feed, tripToRoute, 5)
-	if len(trips) == 0 {
-		fmt.Println("No upcoming trips toward Montgomery St.")
+		fmt.Fprintln(os.Stderr, err)
+		fmt.Println("[]")
 		return
 	}
 
-	fmt.Println("19th St. →  Montgomery St.")
-	for _, t := range trips {
-		fmt.Printf("  %s  →  %s\n", fmtHHMM(t.Dep19th), fmtHHMM(t.ArrMont))
+	trips := nextNTripsWithTimes(feed, tripToRoute, 5)
+
+	out := make([]tripJSON, len(trips))
+	for i, t := range trips {
+		out[i] = tripJSON{
+			Depart: fmtHHMM(t.Dep19th),
+			Arrive: fmtHHMM(t.ArrMont),
+		}
+	}
+
+	enc := json.NewEncoder(os.Stdout)
+	if err := enc.Encode(out); err != nil {
+		fmt.Println("[]")
 	}
 }
