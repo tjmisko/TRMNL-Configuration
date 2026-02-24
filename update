@@ -16,11 +16,11 @@ validate_json() {
   fi
 }
 
-BIRTHDAYS=$(validate_json "$(./birthday/fetch)" '[]')
-TASKS=$(validate_json "$(./tasks/fetch)" '[]')
-WEATHER=$(validate_json "$(./weather/fetch)" '{}')
+BIRTHDAYS=$(validate_json "$("$SCRIPT_DIR"/birthday/fetch)" '[]')
+TASKS=$(validate_json "$("$SCRIPT_DIR"/tasks/fetch)" '[]')
+WEATHER=$(validate_json "$("$SCRIPT_DIR"/weather/fetch)" '{}')
 
-BART=$(validate_json "$(./BART/bart)" '[]')
+BART=$(validate_json "$("$SCRIPT_DIR"/BART/bart)" '[]')
 
 jq -n \
   --arg greetings "Greetings from retend.app" \
