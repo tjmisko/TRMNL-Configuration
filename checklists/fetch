@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/../.env" 2>/dev/null
+
+extract_items() {
+  local file="$1"
+  if [ -f "$file" ]; then
+    sed -n 's/^- \[ \] //p' "$file" | jq -Rn '[inputs | select(length > 0)]'
+  else
+    printf '[]'
+  fi
+}
+
+SUNDAY='[]'
+END_OF_MONTH='[]'
+
+if [ "$(date +%u)" = "7" ]; then
+  SUNDAY=$(extract_items "$NOTES_DIRECTORY/templates/Sunday Checklist.md")
+fi
+
+if [ "$(date -d tomorrow +%d)" = "01" ]; then
+  END_OF_MONTH=$(extract_items "$NOTES_DIRECTORY/templates/End of Month Checklist.md")
+fi
+
+jq -n \
+  --argjson sunday "$SUNDAY" \
+  --argjson end_of_month "$END_OF_MONTH" \
+  '{sunday: $sunday, end_of_month: $end_of_month}'
