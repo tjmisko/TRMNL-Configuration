@@ -1,0 +1,153 @@
+<div class="layout layout--col gap--medium">
+
+  <!-- ── Header ─────────────────────────────────────────────── -->
+  <div class="grid grid--cols-2">
+    <div class="col col--start">
+      <span class="title title--small">{{ date }}</span>
+    </div>
+    <div class="col col--end">
+      <span class="label label--gray">{{ week }}</span>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ── Main Content: Two Columns ──────────────────────────── -->
+  <div class="columns">
+
+    <!-- ── Left Column: BART + Weather ────────────────────── -->
+    <div class="column gap--medium">
+
+      <!-- BART Departures -->
+      <span class="label label--underline">BART — 19th St → Montgomery</span>
+      {% if bart.size > 0 %}
+        <div class="list" data-list-limit="true" data-list-max-height="200">
+          {% for trip in bart %}
+            <div class="item">
+              <div class="meta">
+                <span class="index">{{ forloop.index }}</span>
+              </div>
+              <div class="content">
+                <span class="value value--small value--tnums">{{ trip.depart }} → {{ trip.arrive }}</span>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <span class="description">No upcoming departures</span>
+      {% endif %}
+
+      <div class="divider"></div>
+
+      <!-- Weather: SF & Oakland side by side -->
+      <span class="label label--underline">Weather</span>
+      <div class="grid grid--cols-2 gap--medium">
+        {% if weather.sf %}
+          <div class="col">
+            <span class="label label--small">San Francisco</span>
+            <div class="flex gap--small">
+              <span class="value value--small value--tnums">{{ weather.sf.high }}°</span>
+              <span class="label label--small label--gray">/ {{ weather.sf.low }}°</span>
+            </div>
+            {% if weather.sf.rain_chance > 5 %}
+              <span class="label label--small label--inverted">☂ {{ weather.sf.rain_chance }}%</span>
+            {% endif %}
+            {% for alert in weather.sf.alerts %}
+              <span class="label label--small label--outline">{{ alert }}</span>
+            {% endfor %}
+          </div>
+        {% endif %}
+        {% if weather.oakland %}
+          <div class="col">
+            <span class="label label--small">Oakland</span>
+            <div class="flex gap--small">
+              <span class="value value--small value--tnums">{{ weather.oakland.high }}°</span>
+              <span class="label label--small label--gray">/ {{ weather.oakland.low }}°</span>
+            </div>
+            {% if weather.oakland.rain_chance > 5 %}
+              <span class="label label--small label--inverted">☂ {{ weather.oakland.rain_chance }}%</span>
+            {% endif %}
+            {% for alert in weather.oakland.alerts %}
+              <span class="label label--small label--outline">{{ alert }}</span>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+
+    </div>
+
+    <!-- ── Right Column: Birthdays + Tasks + Checklists ──── -->
+    <div class="column gap--medium">
+
+      <!-- Birthdays: only shown if any exist today -->
+      {% if birthdays.size > 0 %}
+        <span class="label label--underline">🎂 Birthdays</span>
+        {% for person in birthdays %}
+          <div class="item">
+            <div class="meta"></div>
+            <div class="content">
+              <span class="value value--small">{{ person }}</span>
+            </div>
+          </div>
+        {% endfor %}
+        <div class="divider"></div>
+      {% endif %}
+
+      <!-- Tasks -->
+      {% if tasks.size > 0 %}
+        <span class="label label--underline">Tasks</span>
+        <div class="list" data-list-limit="true" data-list-max-height="200" data-list-hidden-count="true">
+          {% for task in tasks %}
+            <div class="item">
+              <div class="meta">
+                <span class="index">{{ forloop.index }}</span>
+              </div>
+              <div class="content">
+                <span class="description">{{ task }}</span>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <span class="description">No tasks today</span>
+      {% endif %}
+
+      <!-- Checklists: Sunday -->
+      {% if checklists.sunday.size > 0 %}
+        <div class="divider"></div>
+        <span class="label label--underline">Sunday Checklist</span>
+        <div class="list" data-list-limit="true" data-list-max-height="120" data-list-hidden-count="true">
+          {% for checklist_item in checklists.sunday %}
+            <div class="item">
+              <div class="meta"></div>
+              <div class="content">
+                <span class="description">☐ {{ checklist_item }}</span>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      <!-- Checklists: End of Month -->
+      {% if checklists.end_of_month.size > 0 %}
+        <div class="divider"></div>
+        <span class="label label--underline">End of Month</span>
+        <div class="list" data-list-limit="true" data-list-max-height="120" data-list-hidden-count="true">
+          {% for checklist_item in checklists.end_of_month %}
+            <div class="item">
+              <div class="meta"></div>
+              <div class="content">
+                <span class="description">☐ {{ checklist_item }}</span>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+    </div>
+  </div>
+</div>
+
+<div class="title_bar">
+  <span class="title">{{ greetings }}</span>
+</div>

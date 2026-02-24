@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>TRMNL Dashboard Preview</title>
+  <link rel="stylesheet" href="https://usetrmnl.com/css/latest/plugins.css">
+  <script src="https://usetrmnl.com/js/latest/plugins.js"></script>
+  <style>
+    body {
+      background: #eee;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 40px;
+      padding: 40px;
+    }
+    h2.preview-label {
+      font-family: sans-serif;
+      color: #666;
+      margin: 0;
+    }
+    /* e-ink 800x480 simulation */
+    .screen {
+      width: 800px;
+      height: 480px;
+      background: #fff;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    }
+    /* No-birthday variant is same size */
+    .screen--no-birthday {
+      width: 800px;
+      height: 480px;
+      background: #fff;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════
+     VARIANT 1: Full view with birthdays + rain + checklists
+     ═══════════════════════════════════════════════════════════ -->
+<h2 class="preview-label">Full — with birthdays, rain, checklists</h2>
+<div class="screen">
+  <div class="view view--full">
+
+    <div class="layout layout--col gap--medium">
+
+      <!-- Header -->
+      <div class="grid grid--cols-2">
+        <div class="col col--start">
+          <span class="title title--small">Tuesday, 24 February 2026</span>
+        </div>
+        <div class="col col--end">
+          <span class="label label--gray">Week 09</span>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Main Content: Two Columns -->
+      <div class="columns">
+
+        <!-- Left Column: BART + Weather -->
+        <div class="column gap--medium">
+
+          <span class="label label--underline">BART — 19th St → Montgomery</span>
+          <div class="list" data-list-limit="true" data-list-max-height="200">
+            <div class="item">
+              <div class="meta"><span class="index">1</span></div>
+              <div class="content">
+                <span class="value value--small value--tnums">14:32 → 14:42</span>
+              </div>
+            </div>
+            <div class="item">
+              <div class="meta"><span class="index">2</span></div>
+              <div class="content">
+                <span class="value value--small value--tnums">14:37 → 14:47</span>
+              </div>
+            </div>
+            <div class="item">
+              <div class="meta"><span class="index">3</span></div>
+              <div class="content">
+                <span class="value value--small value--tnums">14:42 → 14:52</span>
+              </div>
+            </div>
+            <div class="item">
+              <div class="meta"><span class="index">4</span></div>
+              <div class="content">
+                <span class="value value--small value--tnums">14:47 → 14:57</span>
+              </div>
+            </div>
+            <div class="item">
+              <div class="meta"><span class="index">5</span></div>
+              <div class="content">
+                <span class="value value--small value--tnums">14:52 → 15:02</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <span class="label label--underline">Weather</span>
+          <div class="grid grid--cols-2 gap--medium">
+            <div class="col">
+              <span class="label label--small">San Francisco</span>
+              <div class="flex gap--small">
+                <span class="value value--small value--tnums">72°</span>
+                <span class="label label--small label--gray">/ 52°</span>
+              </div>
+              <!-- Rain shown: 45% > 5% threshold -->
+              <span class="label label--small label--inverted">☂ 45%</span>
+              <span class="label label--small label--outline">Dense Fog Advisory</span>
+            </div>
+            <div class="col">
+              <span class="label label--small">Oakland</span>
+              <div class="flex gap--small">
+                <span class="value value--small value--tnums">68°</span>
+                <span class="label label--small label--gray">/ 50°</span>
+              </div>
+              <!-- Rain shown: 10% > 5% threshold -->
+              <span class="label label--small label--inverted">☂ 10%</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Right Column: Birthdays + Tasks + Checklists -->
+        <div class="column gap--medium">
+
+          <!-- Birthdays: VISIBLE — array has items -->
+          <span class="label label--underline">🎂 Birthdays</span>
+          <div class="item">
+            <div class="meta"></div>
+            <div class="content">
+              <span class="value value--small">Alice</span>
+            </div>
+          </div>
+          <div class="item">
+            <div class="meta"></div>
+            <div class="content">
+              <span class="value value--small">Bob</span>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <span class="label label--underline">Tasks</span>
+          <div class="list" data-list-limit="true" data-list-max-height="200" data-list-hidden-count="true">
+            <div class="item">
+              <div class="meta"><span class="index">1</span></div>
+              <div class="content">
+                <span class="description">Do thing with <b>Project</b></span>
+              </div>
+            </div>
+            <div class="item">
+              <div class="meta"><span class="index">2</span></div>
+              <div class="content">
+                <span class="description">Another task</span>
+              </div>
+            </div>
+            <div class="item">
+              <div class="meta"><span class="index">3</span></div>
+              <div class="content">
+                <span class="description">Review <b>Budget</b> report</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sunday Checklist: VISIBLE — array has items -->
+          <div class="divider"></div>
+          <span class="label label--underline">Sunday Checklist</span>
+          <div class="list" data-list-limit="true" data-list-max-height="120" data-list-hidden-count="true">
+            <div class="item">
+              <div class="meta"></div>
+              <div class="content">
+                <span class="description">☐ Clean desk</span>
+              </div>
+            </div>
+            <div class="item">
+              <div class="meta"></div>
+              <div class="content">
+                <span class="description">☐ Review week</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <div class="title_bar">
+      <span class="title">Greetings from retend.app</span>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     VARIANT 2: No birthdays, no rain, no checklists
+     (Shows how conditional sections disappear)
+     ═══════════════════════════════════════════════════════════ -->
+<h2 class="preview-label">Full — no birthdays, no rain, no checklists</h2>
+<div class="screen">
+  <div class="view view--full">
+
+    <div class="layout layout--col gap--medium">
+
+      <!-- Header -->
+      <div class="grid grid--cols-2">
+        <div class="col col--start">
+          <span class="title title--small">Wednesday, 25 February 2026</span>
+        </div>
+        <div class="col col--end">
+          <span class="label label--gray">Week 09</span>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="columns">
+
+        <!-- Left Column -->
+        <div class="column gap--medium">
+
+          <span class="label label--underline">BART — 19th St → Montgomery</span>
+          <div class="list" data-list-limit="true" data-list-max-height="200">
+            <div class="item">
+              <div class="meta"><span class="index">1</span></div>
+              <div class="content">
+                <span class="value value--small value--tnums">08:12 → 08:22</span>
+              </div>
+            </div>
+            <div class="item">
+              <div class="meta"><span class="index">2</span></div>
+              <div class="content">
+                <span class="value value--small value--tnums">08:17 → 08:27</span>
+              </div>
+            </div>
+            <div class="item">
+              <div class="meta"><span class="index">3</span></div>
+              <div class="content">
+                <span class="value value--small value--tnums">08:22 → 08:32</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <span class="label label--underline">Weather</span>
+          <div class="grid grid--cols-2 gap--medium">
+            <div class="col">
+              <span class="label label--small">San Francisco</span>
+              <div class="flex gap--small">
+                <span class="value value--small value--tnums">65°</span>
+                <span class="label label--small label--gray">/ 48°</span>
+              </div>
+              <!-- Rain HIDDEN: 3% ≤ 5% threshold -->
+            </div>
+            <div class="col">
+              <span class="label label--small">Oakland</span>
+              <div class="flex gap--small">
+                <span class="value value--small value--tnums">63°</span>
+                <span class="label label--small label--gray">/ 46°</span>
+              </div>
+              <!-- Rain HIDDEN: 2% ≤ 5% threshold -->
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Right Column -->
+        <div class="column gap--medium">
+
+          <!-- Birthdays: HIDDEN — empty array -->
+
+          <span class="label label--underline">Tasks</span>
+          <div class="list" data-list-limit="true" data-list-max-height="200" data-list-hidden-count="true">
+            <div class="item">
+              <div class="meta"><span class="index">1</span></div>
+              <div class="content">
+                <span class="description">Submit <b>quarterly report</b></span>
+              </div>
+            </div>
+            <div class="item">
+              <div class="meta"><span class="index">2</span></div>
+              <div class="content">
+                <span class="description">Call dentist</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Checklists: HIDDEN — empty arrays -->
+
+        </div>
+      </div>
+    </div>
+
+    <div class="title_bar">
+      <span class="title">Greetings from retend.app</span>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

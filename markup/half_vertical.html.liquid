@@ -1,0 +1,62 @@
+<div class="layout layout--col gap--small">
+
+  <!-- ── Header ─────────────────────────────────────────────── -->
+  <span class="title title--small">{{ date }}</span>
+
+  <div class="divider"></div>
+
+  <!-- ── BART Departures ────────────────────────────────────── -->
+  <span class="label label--underline">BART</span>
+  {% if bart.size > 0 %}
+    <div class="list" data-list-limit="true" data-list-max-height="140">
+      {% for trip in bart %}
+        <div class="item">
+          <div class="meta">
+            <span class="index">{{ forloop.index }}</span>
+          </div>
+          <div class="content">
+            <span class="value value--xsmall value--tnums">{{ trip.depart }} → {{ trip.arrive }}</span>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <span class="description">No departures</span>
+  {% endif %}
+
+  <div class="divider"></div>
+
+  <!-- ── Weather (compact) ──────────────────────────────────── -->
+  <div class="grid grid--cols-2 gap--small">
+    {% if weather.sf %}
+      <div class="col">
+        <span class="label label--small">SF {{ weather.sf.high }}°/{{ weather.sf.low }}°</span>
+        {% if weather.sf.rain_chance > 5 %}
+          <span class="label label--small label--inverted">☂ {{ weather.sf.rain_chance }}%</span>
+        {% endif %}
+      </div>
+    {% endif %}
+    {% if weather.oakland %}
+      <div class="col">
+        <span class="label label--small">Oak {{ weather.oakland.high }}°/{{ weather.oakland.low }}°</span>
+        {% if weather.oakland.rain_chance > 5 %}
+          <span class="label label--small label--inverted">☂ {{ weather.oakland.rain_chance }}%</span>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- ── Birthdays (conditional) ────────────────────────────── -->
+  {% if birthdays.size > 0 %}
+    <div class="divider"></div>
+    <span class="label label--underline">Birthdays</span>
+    {% for person in birthdays %}
+      <span class="description">🎂 {{ person }}</span>
+    {% endfor %}
+  {% endif %}
+
+</div>
+
+<div class="title_bar">
+  <span class="title">{{ greetings }}</span>
+</div>
