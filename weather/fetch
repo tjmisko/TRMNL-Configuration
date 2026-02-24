@@ -12,14 +12,13 @@ extract_forecast() {
   local period_json="$1"
   local hourly_json="$2"
   local cutoff="$3"
-  jq -n \
-    --argjson periods "$period_json" \
-    --argjson hourly "$hourly_json" \
-    --arg cutoff "$cutoff" '
-    $periods.properties.periods as $p |
+  jq -n --arg cutoff "$cutoff" \
+    --slurpfile periods <(printf '%s' "$period_json") \
+    --slurpfile hourly <(printf '%s' "$hourly_json") '
+    $periods[0].properties.periods as $p |
     ($p | map(select(.isDaytime == true)) | .[0].temperature) as $high |
     ($p | map(select(.isDaytime == false)) | .[0].temperature) as $low |
-    ($hourly.properties.periods
+    ($hourly[0].properties.periods
       | map(select(.startTime < $cutoff))
       | map(.probabilityOfPrecipitation.value // 0)
       | max // 0
@@ -66,8 +65,8 @@ fi
 jq -n \
   --argjson sf_forecast "$SF_FORECAST" \
   --argjson oak_forecast "$OAK_FORECAST" \
-  --argjson sf_alerts "$SF_ALERTS" \
-  --argjson oak_alerts "$OAK_ALERTS" '
+  --argjson sf_alerts "${SF_ALERTS:-[]}" \
+  --argjson oak_alerts "${OAK_ALERTS:-[]}" '
   {
     sf: (if $sf_forecast == null then null else ($sf_forecast + {alerts: $sf_alerts}) end),
     oakland: (if $oak_forecast == null then null else ($oak_forecast + {alerts: $oak_alerts}) end)
