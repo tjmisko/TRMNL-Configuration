@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/../.env" 2>/dev/null
 TODAY_STRING=$(date +"%m-%d")
 rg -0 -l "^birthday: [0-9]{4}-$TODAY_STRING" "$NOTES_DIRECTORY/people" \
   | xargs -0 -r basename -a \

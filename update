@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-set -a
-source <(sed 's/\r$//' "$SCRIPT_DIR/.env")
-set +a
+source "$SCRIPT_DIR/.env" 2>/dev/null
+export NOTES_DIRECTORY PROJECT_DIRECTORY
 DATE_STRING=$(date +"%A, %d %B %Y")
 WEEK_STRING=$(date +"Week %V")
 
