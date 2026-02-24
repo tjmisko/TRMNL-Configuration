@@ -19,6 +19,8 @@ BIRTHDAYS=$(validate_json "$("$SCRIPT_DIR"/birthday/fetch)" '[]')
 TASKS=$(validate_json "$("$SCRIPT_DIR"/tasks/fetch)" '[]')
 WEATHER=$(validate_json "$("$SCRIPT_DIR"/weather/fetch)" '{}')
 
+CHECKLISTS=$(validate_json "$("$SCRIPT_DIR"/checklists/fetch)" '{"sunday":[],"end_of_month":[]}')
+
 BART=$(validate_json "$("$SCRIPT_DIR"/BART/bart)" '[]')
 
 jq -n \
@@ -28,6 +30,7 @@ jq -n \
   --argjson birthdays "$BIRTHDAYS" \
   --argjson tasks "$TASKS" \
   --argjson weather "$WEATHER" \
+  --argjson checklists "$CHECKLISTS" \
   --argjson bart "$BART" '
 {
   greetings: $greetings,
@@ -35,6 +38,7 @@ jq -n \
   week: $week,
   birthdays: $birthdays,
   tasks: $tasks,
+  checklists: $checklists,
   weather: $weather,
   bart: $bart
 }

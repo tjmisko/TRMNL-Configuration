@@ -47,7 +47,7 @@ else
 fi
 
 # ── 4. Ensure scripts are executable ────────────────────────────────
-chmod +x update birthday/fetch tasks/fetch weather/fetch
+chmod +x update birthday/fetch tasks/fetch weather/fetch checklists/fetch
 echo "Scripts marked executable"
 
 # ── 5. Smoke test ───────────────────────────────────────────────────
