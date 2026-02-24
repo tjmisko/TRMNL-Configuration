@@ -1,34 +1,56 @@
 #!/usr/bin/env bash
 UA="GooseTRM/1.0 (weather-alerts)"
 SF_FORECAST_URL="https://api.weather.gov/gridpoints/MTR/84,105/forecast"
+SF_HOURLY_URL="https://api.weather.gov/gridpoints/MTR/84,105/forecast/hourly"
 OAK_FORECAST_URL="https://api.weather.gov/gridpoints/MTR/90,106/forecast"
+OAK_HOURLY_URL="https://api.weather.gov/gridpoints/MTR/90,106/forecast/hourly"
 ALERTS_URL="https://api.weather.gov/alerts/active?zone=CAZ006,CAZ508"
 
+TODAY_23=$(date +"%Y-%m-%dT23:00:00")
+
 extract_forecast() {
-  local json="$1"
-  echo "$json" | jq '
-    .properties.periods as $p |
+  local period_json="$1"
+  local hourly_json="$2"
+  local cutoff="$3"
+  jq -n \
+    --argjson periods "$period_json" \
+    --argjson hourly "$hourly_json" \
+    --arg cutoff "$cutoff" '
+    $periods.properties.periods as $p |
     ($p | map(select(.isDaytime == true)) | .[0].temperature) as $high |
     ($p | map(select(.isDaytime == false)) | .[0].temperature) as $low |
-    ([$p[0], $p[1]] | any(.probabilityOfPrecipitation.value >= 30)) as $rain |
-    { high: $high, low: $low, rain: $rain }
+    ($hourly.properties.periods
+      | map(select(.startTime < $cutoff))
+      | map(.probabilityOfPrecipitation.value // 0)
+      | max // 0
+    ) as $rain_chance |
+    {
+      high: $high,
+      low: $low,
+      rain: ($rain_chance >= 30),
+      rain_chance: $rain_chance
+    }
   '
 }
 
 SF_RAW=$(curl -sf -H "User-Agent: $UA" "$SF_FORECAST_URL")
 SF_OK=$?
+SF_HOURLY_RAW=$(curl -sf -H "User-Agent: $UA" "$SF_HOURLY_URL")
+SF_HOURLY_OK=$?
 OAK_RAW=$(curl -sf -H "User-Agent: $UA" "$OAK_FORECAST_URL")
 OAK_OK=$?
+OAK_HOURLY_RAW=$(curl -sf -H "User-Agent: $UA" "$OAK_HOURLY_URL")
+OAK_HOURLY_OK=$?
 ALERTS_RAW=$(curl -sf -H "User-Agent: $UA" "$ALERTS_URL")
 
-if [ $SF_OK -eq 0 ]; then
-  SF_FORECAST=$(extract_forecast "$SF_RAW")
+if [ $SF_OK -eq 0 ] && [ $SF_HOURLY_OK -eq 0 ]; then
+  SF_FORECAST=$(extract_forecast "$SF_RAW" "$SF_HOURLY_RAW" "$TODAY_23")
 else
   SF_FORECAST="null"
 fi
 
-if [ $OAK_OK -eq 0 ]; then
-  OAK_FORECAST=$(extract_forecast "$OAK_RAW")
+if [ $OAK_OK -eq 0 ] && [ $OAK_HOURLY_OK -eq 0 ]; then
+  OAK_FORECAST=$(extract_forecast "$OAK_RAW" "$OAK_HOURLY_RAW" "$TODAY_23")
 else
   OAK_FORECAST="null"
 fi
