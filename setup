@@ -5,6 +5,11 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # ── 1. Check prerequisites ──────────────────────────────────────────
+if ! command -v go &>/dev/null && [[ -x /usr/local/go/bin/go ]]; then
+  export PATH="/usr/local/go/bin:$PATH"
+  echo "Found go at /usr/local/go/bin/go, added to PATH"
+fi
+
 missing=()
 for cmd in jq rg curl go; do
   command -v "$cmd" &>/dev/null || missing+=("$cmd")
