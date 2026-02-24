@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/../.env" 2>/dev/null
 TODAY_STRING=$(date +"%Y-%m-%d")
 
 rg --no-filename "^- \[ \].*@\[\[$TODAY_STRING\]\]" "$NOTES_DIRECTORY" \
