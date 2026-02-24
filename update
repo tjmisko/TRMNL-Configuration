@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-PROJECT_DIRECTORY="/home/tjmisko/Projects/GooseTRM"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 set -a
-source <(sed 's/\r$//' "$PROJECT_DIRECTORY/.env")
+source <(sed 's/\r$//' "$SCRIPT_DIR/.env")
 set +a
 DATE_STRING=$(date +"%A, %d %B %Y")
 WEEK_STRING=$(date +"Week %V")
