@@ -1,0 +1,12 @@
+---
+strategy: polling
+no_screen_padding: 'no'
+dark_mode: 'no'
+static_data: ''
+polling_verb: get
+polling_url: https://retend.app/trmnl.json
+polling_headers: content-type=application/json
+polling_body: ''
+id: 243914
+name: TRMNL Smartscreen
+refresh_interval: 15

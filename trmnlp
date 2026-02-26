@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Wrapper around trmnlp via Docker.
+# Usage: ./trmnlp <command> [args...]
+#   ./trmnlp serve          — start dev server on localhost:4567
+#   ./trmnlp init <name>    — scaffold a new plugin
+#   ./trmnlp login          — authenticate with TRMNL
+#   ./trmnlp clone <n> <id> — clone an existing plugin
+#   ./trmnlp push           — upload plugin to TRMNL
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_DIR="$SCRIPT_DIR/plugin"
+IMAGE="trmnl/trmnlp"
+CONFIG_DIR="$HOME/.config/trmnlp"
+
+mkdir -p "$CONFIG_DIR" "$PLUGIN_DIR"
+
+cmd="${1:-}"
+
+case "$cmd" in
+  login)
+    # Login needs an interactive terminal and persistent config
+    docker run -it \
+      --volume "$CONFIG_DIR:/root/.config/trmnlp" \
+      --volume "$PLUGIN_DIR:/plugin" \
+      "$IMAGE" login
+    ;;
+  serve)
+    shift
+    docker run \
+      --publish 4567:4567 \
+      --volume "$CONFIG_DIR:/root/.config/trmnlp" \
+      --volume "$PLUGIN_DIR:/plugin" \
+      "$IMAGE" serve "$@"
+    ;;
+  "")
+    echo "Usage: ./trmnlp <command> [args...]"
+    echo "Commands: serve, init, login, clone, push"
+    exit 1
+    ;;
+  *)
+    # Pass through any other command (init, clone, push, etc.)
+    shift
+    docker run -it \
+      --volume "$CONFIG_DIR:/root/.config/trmnlp" \
+      --volume "$PLUGIN_DIR:/plugin" \
+      "$IMAGE" "$cmd" "$@"
+    ;;
+esac
