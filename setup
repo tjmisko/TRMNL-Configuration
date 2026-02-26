@@ -31,6 +31,7 @@ if [[ ! -f .env ]]; then
   read -rp "Path to notes vault [$default_notes]: " notes_dir
   notes_dir="${notes_dir:-$default_notes}"
   sed -i "s|^NOTES_DIRECTORY=.*|NOTES_DIRECTORY=\"$notes_dir\"|" .env
+  sed -i 's/\r$//' .env
 
   echo ".env created"
 else
