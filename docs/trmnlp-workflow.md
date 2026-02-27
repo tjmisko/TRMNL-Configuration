@@ -15,7 +15,21 @@ BART binary ───┘                                │
                               plugin/src/full.liquid renders data
 ```
 
-The plugin uses a **polling strategy**: the TRMNL device fetches `trmnl.json` from `https://retend.app/trmnl.json` every 15 seconds, then renders the data through `full.liquid`.
+**Local dev flow** (`./trmnlp serve`):
+
+```
+                  trmnl.json
+                      │
+  python3 -m http.server :9473
+                      │
+       host.docker.internal:9473  ◄── --add-host bridge (Linux)
+                      │
+              Docker (trmnlp)
+                      │
+              localhost:4567 ─▶ browser preview
+```
+
+The plugin uses a **polling strategy**: the TRMNL device fetches `trmnl.json` from `https://retend.app/trmnl.json` every 15 minutes, then renders the data through `full.liquid`. During local development, `./trmnlp serve` temporarily redirects polling to a local HTTP server so the preview reflects your current `trmnl.json`.
 
 ## Key Files
 
@@ -35,13 +49,20 @@ These variables are available in `full.liquid` via the polled `trmnl.json`:
 | `date` | string | `"Monday, 23 February 2026"` |
 | `week` | string | `"Week 09"` |
 | `greetings` | string | `"Greetings from retend.app"` |
+| `is_sunday` | boolean | `true` when today is Sunday |
+| `is_last_day_of_month` | boolean | `true` on the last calendar day of the month |
 | `bart` | array | `[{"depart": "20:28", "arrive": "20:43"}, ...]` |
 | `weather.sf` | object | `{"high": 62, "low": 54, "rain": true, "rain_chance": 32, "alerts": []}` |
 | `weather.oakland` | object | Same shape as `weather.sf` |
 | `birthdays` | array | List of people with birthdays today |
 | `tasks` | array | Tasks due today |
+| `events` | array | Calendar event strings (currently hardcoded to `[]`) |
 | `checklists.sunday` | array | Sunday checklist items |
 | `checklists.end_of_month` | array | End-of-month checklist items |
+| `rain_alert.active` | boolean | `true` if rain is forecast in either city |
+| `rain_alert.chance` | number | Max rain chance across SF and Oakland |
+| `rain_alert.city` | string | City with the higher rain chance (`"San Francisco"` or `"Oakland"`) |
+| `rain_alert.alerts` | array | Deduplicated union of weather alerts from both cities |
 
 Access nested values with dot notation: `{{ weather.sf.high }}`.
 Access array elements with the `slice` filter: `{{ bart | slice: 0 }}`.
@@ -56,6 +77,18 @@ Access array elements with the `slice` filter: `{{ bart | slice: 0 }}`.
 
 Opens `http://localhost:4567` with hot-reload. Edits to files in `plugin/src/` and `.trmnlp.yml` auto-refresh the preview.
 
+Under the hood, the wrapper:
+
+1. Starts `python3 -m http.server 9473` in the background, serving `trmnl.json` from the repo root.
+2. Rewrites `polling_url` in `plugin/src/settings.yml` to `http://host.docker.internal:9473/trmnl.json` so the Docker container can reach the host.
+3. Launches the `trmnlp` Docker container with `--add-host host.docker.internal:host-gateway` (required on Linux; macOS resolves this automatically).
+4. On exit, a `trap` restores the original `polling_url` and kills the HTTP server.
+
+> **Unclean shutdown caveat:** If the process is killed with `kill -9` or otherwise bypasses the trap, `settings.yml` will be left pointing at the local URL. Restore it with:
+> ```sh
+> git checkout plugin/src/settings.yml
+> ```
+
 ### 2. Edit the template
 
 Edit `plugin/src/full.liquid`. The dev server reloads automatically.
@@ -67,6 +100,15 @@ Edit `plugin/src/full.liquid`. The dev server reloads automatically.
 ```
 
 Uploads the plugin to the TRMNL web service. Requires prior authentication.
+
+The push command runs with `docker run -it` and prompts for confirmation, so it requires an interactive TTY. For scripted/non-interactive use:
+
+```sh
+echo "y" | docker run -i \
+  --volume ~/.config/trmnlp:/root/.config/trmnlp \
+  --volume ./plugin:/plugin \
+  trmnl/trmnlp push
+```
 
 ### 4. Authenticate (one-time)
 
@@ -83,6 +125,51 @@ Saves API key to `~/.config/trmnlp/config.yml`.
 ```
 
 Re-runs all fetch scripts and regenerates `trmnl.json`.
+
+## Troubleshooting
+
+### Port 4567 already allocated
+
+The dev server binds to port 4567. If a previous container is still running:
+
+```sh
+docker ps -a --filter "publish=4567"
+docker rm -f <container-id>
+```
+
+### `settings.yml` left with local URL after unclean shutdown
+
+If `./trmnlp serve` was killed without cleanup (e.g. `kill -9`, terminal crash):
+
+```sh
+git checkout plugin/src/settings.yml
+```
+
+## Layout Notes
+
+The `.column` class applies `gap: 10px` between all direct children. When building sections with a label above a list, wrap the label and its content in a single `<div>` so the gap appears between sections rather than between the label and its items:
+
+```html
+<!-- Good: gap applies between the two wrapper divs -->
+<div class="column">
+  <div>
+    <div class="label">Section A</div>
+    <div>...items...</div>
+  </div>
+  <div>
+    <div class="label">Section B</div>
+    <div>...items...</div>
+  </div>
+</div>
+
+<!-- Bad: gap pushes the label away from its items -->
+<div class="column">
+  <div class="label">Section A</div>
+  <div>...items...</div>
+  <div class="label">Section B</div>
+  <div>...items...</div>
+</div>
+```
 
 ## TRMNL Design System Quick Reference
 
