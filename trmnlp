@@ -28,8 +28,27 @@ case "$cmd" in
     ;;
   serve)
     shift
+    SETTINGS="$PLUGIN_DIR/src/settings.yml"
+    ORIGINAL_URL=$(grep '^polling_url:' "$SETTINGS" | awk '{print $2}')
+    LOCAL_PORT=9473
+
+    # Start a local HTTP server to serve trmnl.json
+    python3 -m http.server "$LOCAL_PORT" --directory "$SCRIPT_DIR" &>/dev/null &
+    HTTP_PID=$!
+
+    # Point settings.yml at the local server
+    sed -i "s|^polling_url:.*|polling_url: http://host.docker.internal:${LOCAL_PORT}/trmnl.json|" "$SETTINGS"
+
+    # Restore original URL and kill HTTP server on exit
+    cleanup() {
+      sed -i "s|^polling_url:.*|polling_url: ${ORIGINAL_URL}|" "$SETTINGS"
+      kill "$HTTP_PID" 2>/dev/null || true
+    }
+    trap cleanup EXIT
+
     docker run \
       --publish 4567:4567 \
+      --add-host host.docker.internal:host-gateway \
       --volume "$CONFIG_DIR:/root/.config/trmnlp" \
       --volume "$PLUGIN_DIR:/plugin" \
       "$IMAGE" serve "$@"

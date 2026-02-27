@@ -4,6 +4,8 @@ source "$SCRIPT_DIR/.env" 2>/dev/null
 export NOTES_DIRECTORY PROJECT_DIRECTORY
 DATE_STRING=$(date +"%A, %d %B %Y")
 WEEK_STRING=$(date +"Week %V")
+IS_SUNDAY=$([[ $(date +"%u") == "7" ]] && echo true || echo false)
+IS_LAST_DAY_OF_MONTH=$([[ $(date +"%d") == $(date -d "$(date +%Y-%m-01) +1 month -1 day" +"%d") ]] && echo true || echo false)
 
 validate_json() {
   local raw="$1"
@@ -23,12 +25,17 @@ CHECKLISTS=$(validate_json "$("$SCRIPT_DIR"/checklists/fetch)" '{"sunday":[],"en
 
 BART=$(validate_json "$("$SCRIPT_DIR"/BART/bart)" '[]')
 
+EVENTS='[]'
+
 jq -n \
   --arg greetings "Greetings from retend.app" \
   --arg date "$DATE_STRING" \
   --arg week "$WEEK_STRING" \
+  --argjson is_sunday "$IS_SUNDAY" \
+  --argjson is_last_day_of_month "$IS_LAST_DAY_OF_MONTH" \
   --argjson birthdays "$BIRTHDAYS" \
   --argjson tasks "$TASKS" \
+  --argjson events "$EVENTS" \
   --argjson weather "$WEATHER" \
   --argjson checklists "$CHECKLISTS" \
   --argjson bart "$BART" '
@@ -38,8 +45,17 @@ jq -n \
   week: $week,
   birthdays: $birthdays,
   tasks: $tasks,
+  events: $events,
+  is_sunday: $is_sunday,
+  is_last_day_of_month: $is_last_day_of_month,
   checklists: $checklists,
   weather: $weather,
-  bart: $bart
+  bart: $bart,
+  rain_alert: {
+    active: ($weather.sf.rain or $weather.oakland.rain),
+    chance: ([$weather.sf.rain_chance, $weather.oakland.rain_chance] | max),
+    city: (if $weather.sf.rain_chance >= $weather.oakland.rain_chance then "San Francisco" else "Oakland" end),
+    alerts: (($weather.sf.alerts // []) + ($weather.oakland.alerts // []) | unique)
+  }
 }
 ' > "$PROJECT_DIRECTORY"/trmnl.json
