@@ -33,6 +33,11 @@
 <div class="layout" style="flex: 1;">
   <div class="columns" style="height: 100%; padding: 0 16px; gap: 24px;">
     <div class="column" style="flex: 69; height: 100%; display: flex; flex-direction: column; justify-content: center; font-family: monospace; white-space: normal;">
+      {% if left_rows == 0 %}
+      <div style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 20px; font-weight: bold;">
+        Nothing on the docket!
+      </div>
+      {% else %}
       {% if birthday_count != 0 %}
       <div>
         <div class="label" style="margin: 0; padding: 0; line-height: 1.2;">Birthdays</div>
@@ -91,6 +96,7 @@
           {% endfor %}
         </div>
       </div>
+      {% endif %}
       {% endif %}
     </div>
 
