@@ -4,7 +4,7 @@
 <div style="max-height: 20%; border: 1px solid black; border-radius: 8px; padding: 4px 12px; margin: 2px 8px 8px 8px; font-family: Inter, helvetica, arial, sans-serif;">
   <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 12px; margin: 0; padding: 0; font-size: {{ alert_font }}; font-weight: bold;">
     {% if rain_alert.active %}
-    <span>{{ rain_alert.chance }}% chance of rain today in {{ rain_alert.city }}</span>
+    <span>{{ rain_alert.chance }}% chance of rain today in {{ rain_alert.city }}. Bring your umbrella!</span>
     {% endif %}
     {% for alert in rain_alert.alerts %}
     <span>{{ alert }}</span>
@@ -13,31 +13,42 @@
 </div>
 {% endif %}
 
+{% comment %}-- Count visual rows for adaptive font sizing --{% endcomment %}
+{% assign left_rows = 0 %}
+{% assign birthday_count = birthdays | size %}
+{% if birthday_count != 0 %}{% assign left_rows = left_rows | plus: 1 | plus: birthday_count %}{% endif %}
+{% assign event_count = events | size %}
+{% if event_count != 0 %}{% assign left_rows = left_rows | plus: 1 | plus: event_count %}{% endif %}
+{% if is_last_day_of_month %}{% assign eom_count = checklists.end_of_month | size %}{% assign left_rows = left_rows | plus: 1 | plus: eom_count %}{% endif %}
+{% if is_sunday %}{% assign sun_count = checklists.sunday | size %}{% assign left_rows = left_rows | plus: 1 | plus: sun_count %}{% endif %}
+{% assign task_count = tasks | size %}
+{% if task_count != 0 %}{% assign left_rows = left_rows | plus: 1 | plus: task_count %}{% endif %}
+
+{% if rain_alert.active or alert_count > 0 %}
+  {% if left_rows > 18 %}{% assign left_font = "8px" %}{% elsif left_rows > 15 %}{% assign left_font = "10px" %}{% elsif left_rows > 12 %}{% assign left_font = "12px" %}{% elsif left_rows > 8 %}{% assign left_font = "14px" %}{% else %}{% assign left_font = "16px" %}{% endif %}
+{% else %}
+  {% if left_rows > 20 %}{% assign left_font = "8px" %}{% elsif left_rows > 17 %}{% assign left_font = "10px" %}{% elsif left_rows > 14 %}{% assign left_font = "12px" %}{% elsif left_rows > 10 %}{% assign left_font = "14px" %}{% else %}{% assign left_font = "16px" %}{% endif %}
+{% endif %}
+
 <div class="layout" style="flex: 1;">
-  <div class="columns" style="height: 100%;">
-    <div class="column" style="flex: 75;">
-      {% assign birthday_count = birthdays | size %}
+  <div class="columns" style="height: 100%; padding: 0 16px; gap: 24px;">
+    <div class="column" style="flex: 69; height: 100%; display: flex; flex-direction: column; justify-content: center; font-family: monospace; white-space: normal;">
       {% if birthday_count != 0 %}
       <div>
         <div class="label" style="margin: 0; padding: 0; line-height: 1.2;">Birthdays</div>
-        <table class="table" style="margin: 0;">
-          <tbody>
-            {% for birthday in birthdays %}
-            <tr>
-              <td><span class="title title--small">{{ birthday }}</span></td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+        <div style="padding-left: 16px;">
+          {% for birthday in birthdays %}
+          <div style="padding: 2px 0; border-bottom: 1px dashed #999; font-size: {{ left_font }}; font-weight: normal;">{{ birthday }}</div>
+          {% endfor %}
+        </div>
       </div>
       {% endif %}
-      {% assign event_count = events | size %}
       {% if event_count != 0 %}
       <div>
         <div class="label" style="margin: 0; padding: 0; line-height: 1.2;">Calendar Events</div>
         <div style="padding-left: 16px;">
           {% for event in events %}
-          <div style="padding: 2px 0; border-bottom: 1px dashed #999; font-size: 14px; font-weight: normal;">{{ event }}</div>
+          <div style="padding: 2px 0; border-bottom: 1px dashed #999; font-size: {{ left_font }}; font-weight: normal;">{{ event }}</div>
           {% endfor %}
         </div>
       </div>
@@ -47,7 +58,7 @@
         <div class="label" style="margin: 0; padding: 0; line-height: 1.2;">End of Month Checklist</div>
         <div style="padding-left: 16px;">
           {% for item in checklists.end_of_month %}
-          <div style="display: flex; align-items: center; gap: 8px; padding: 2px 0; border-bottom: 1px dashed #999; font-size: 14px; font-weight: normal;">
+          <div style="display: flex; align-items: center; gap: 8px; padding: 2px 0; border-bottom: 1px dashed #999; font-size: {{ left_font }}; font-weight: normal;">
             <span style="display: inline-block; width: 12px; height: 12px; border: 2px solid black; border-radius: 2px; flex-shrink: 0;"></span>
             <span>{{ item }}</span>
           </div>
@@ -60,7 +71,7 @@
         <div class="label" style="margin: 0; padding: 0; line-height: 1.2;">Sunday Checklist</div>
         <div style="padding-left: 16px;">
           {% for item in checklists.sunday %}
-          <div style="display: flex; align-items: center; gap: 8px; padding: 2px 0; border-bottom: 1px dashed #999; font-size: 14px; font-weight: normal;">
+          <div style="display: flex; align-items: center; gap: 8px; padding: 2px 0; border-bottom: 1px dashed #999; font-size: {{ left_font }}; font-weight: normal;">
             <span style="display: inline-block; width: 12px; height: 12px; border: 2px solid black; border-radius: 2px; flex-shrink: 0;"></span>
             <span>{{ item }}</span>
           </div>
@@ -68,25 +79,52 @@
         </div>
       </div>
       {% endif %}
+      {% if task_count != 0 %}
       <div>
         <div class="label" style="margin: 0; padding: 0; line-height: 1.2;">Tasks</div>
         <div style="padding-left: 16px;">
           {% for task in tasks %}
-          <div style="display: flex; align-items: center; gap: 8px; padding: 2px 0; border-bottom: 1px dashed #999; font-size: 14px; font-weight: normal;">
+          <div style="display: flex; align-items: center; gap: 8px; padding: 2px 0; border-bottom: 1px dashed #999; font-size: {{ left_font }}; font-weight: normal;">
             <span style="display: inline-block; width: 12px; height: 12px; border: 2px solid black; border-radius: 2px; flex-shrink: 0;"></span>
             <span>{{ task }}</span>
           </div>
           {% endfor %}
         </div>
       </div>
+      {% endif %}
     </div>
 
-    <div class="column" style="flex: 25;">
+    <div class="column" style="flex: 31; height: 100%; display: flex; white-space: nowrap; flex-direction: column; justify-content: center; gap: 16px; font-family: monospace; font-size: 16px;">
       <div>
-        <div class="label" style="margin: 0; padding: 0; line-height: 1.2;">19th &rarr; Montgomery</div>
+        <div class="label" style="margin: 0; padding: 0; line-height: 1.2;">Weather</div>
         <div>
+          {% if weather.sf %}
+          <div style="display: flex; justify-content: space-between; gap: 16px; padding: 3px 0; border-bottom: 1px dashed #ccc;">
+            <span style="min-width: 110px;">San Francisco</span>
+            <span>{{ weather.sf.high }}&deg;F/{{ weather.sf.low }}&deg;F</span>
+          </div>
+          {% endif %}
+          {% if weather.oakland %}
+          <div style="display: flex; justify-content: space-between; gap: 16px; padding: 3px 0; border-bottom: 1px dashed #ccc;">
+            <span style="min-width: 110px;">Oakland</span>
+            <span>{{ weather.oakland.high }}&deg;F/{{ weather.oakland.low }}&deg;F</span>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      <div>
+        <div class="label" style="margin: 0; padding: 0; line-height: 1.2;">BART</div>
+        <div style="width: 75%;">
+          <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: normal; padding: 2px 0;">
+            <span>19th St</span>
+            <span>Montgomery St</span>
+          </div>
           {% for train in bart %}
-          <div style="padding: 2px 0; border-bottom: 1px dashed #ccc; font-size: 14px; font-weight: normal;">{{ train.depart }} &rarr; {{ train.arrive }}</div>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 3px 0; border-bottom: 1px dashed #ccc;">
+            <span>{{ train.depart }}</span>
+            <span>&#10148;</span>
+            <span>{{ train.arrive }}</span>
+          </div>
           {% endfor %}
         </div>
       </div>
