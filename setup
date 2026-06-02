@@ -47,8 +47,18 @@ else
   echo "BART binary is up to date"
 fi
 
+# ── 3b. Build Luma events binary ────────────────────────────────────
+if [[ ! -f events/sources/luma || events/luma/luma.go -nt events/sources/luma ]]; then
+  echo "Building Luma events binary..."
+  (cd events/luma && go build -o ../sources/luma .)
+  echo "Luma built"
+else
+  echo "Luma binary is up to date"
+fi
+
 # ── 4. Ensure scripts are executable ────────────────────────────────
-chmod +x update birthday/fetch tasks/fetch weather/fetch checklists/fetch
+chmod +x update birthday/fetch tasks/fetch weather/fetch checklists/fetch \
+  events/fetch events/sources/recurring
 echo "Scripts marked executable"
 
 # ── 5. Smoke test ───────────────────────────────────────────────────

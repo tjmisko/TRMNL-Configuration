@@ -25,7 +25,7 @@ CHECKLISTS=$(validate_json "$("$SCRIPT_DIR"/checklists/fetch)" '{"sunday":[],"en
 
 BART=$(validate_json "$("$SCRIPT_DIR"/BART/bart)" '[]')
 
-EVENTS='[]'
+EVENTS=$(validate_json "$("$SCRIPT_DIR"/events/fetch)" '[]')
 
 jq -n \
   --arg greetings "Greetings from retend.app" \

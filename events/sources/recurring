@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# Events source adapter: recurring weekly events from the Notes repo.
+#
+# Scans Markdown notes under $NOTES_DIRECTORY/$NOTES_EVENTS_SUBDIR (default
+# subdir: "events") whose YAML frontmatter describes a weekly recurring event,
+# and emits the occurrences that fall on *today* as a JSON array of normalized
+# event objects (schema documented in events/README.md).
+#
+# Expected frontmatter (kept simple; first --- block at the top of the file):
+#   ---
+#   start: "18:00"      # 24-hour local time
+#   end:   "20:00"      # optional
+#   day:   Tuesday      # weekday; also accepts `days: [Tue, Thu]`
+#   title: Climbing     # optional; falls back to the filename
+#   ---
+#
+# Overlapping/conflicting events are intentionally kept. Emits [] if the notes
+# directory or events subdir is missing.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/../../.env" 2>/dev/null
+
+EVENTS_TZ="${EVENTS_TZ:-America/Los_Angeles}"
+TODAY="${EVENTS_TODAY:-$(TZ="$EVENTS_TZ" date +%Y-%m-%d)}"
+SUBDIR="${NOTES_EVENTS_SUBDIR:-events}"
+ROOT="$NOTES_DIRECTORY/$SUBDIR"
+
+if [[ -z "${NOTES_DIRECTORY:-}" || ! -d "$ROOT" ]]; then
+  echo '[]'
+  exit 0
+fi
+
+TODAY_FULL=$(TZ="$EVENTS_TZ" date +%A | tr '[:upper:]' '[:lower:]')
+TODAY_ABBR=${TODAY_FULL:0:3}
+
+# Extract a single frontmatter value by key (case-insensitive), trimming quotes.
+fm_get() {
+  printf '%s\n' "$1" \
+    | sed -n "s/^[[:space:]]*$2[[:space:]]*:[[:space:]]*//Ip" \
+    | head -1 \
+    | sed 's/\r$//; s/^["'\'']//; s/["'\'']$//'
+}
+
+emit_one() {
+  local file="$1" fm days start end title
+  fm=$(awk 'NR==1 && $0=="---"{f=1; next} f && $0=="---"{exit} f{print}' "$file")
+  [[ -z "$fm" ]] && return
+
+  days=$(printf '%s %s' "$(fm_get "$fm" day)" "$(fm_get "$fm" days)" \
+    | tr '[:upper:]' '[:lower:]')
+  echo "$days" | grep -qE "(^|[^a-z])($TODAY_FULL|$TODAY_ABBR)([^a-z]|$)" || return
+
+  start=$(fm_get "$fm" start)
+  end=$(fm_get "$fm" end)
+  title=$(fm_get "$fm" title)
+  [[ -z "$title" ]] && title=$(basename "$file" .md)
+
+  jq -n \
+    --arg title "$title" \
+    --arg start "$start" \
+    --arg end "$end" \
+    --arg date "$TODAY" '
+    {
+      title:   $title,
+      start:   (if $start == "" then null else $start end),
+      end:     (if $end == "" then null else $end end),
+      all_day: ($start == ""),
+      date:    $date,
+      sort:    ($date + "T" + (if $start == "" then "00:00" else $start end)),
+      source:  "recurring"
+    }'
+}
+
+{
+  while IFS= read -r -d '' file; do
+    emit_one "$file"
+  done < <(find "$ROOT" -type f -name '*.md' -print0)
+} | jq -s 'sort_by(.sort, .title)'

@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Events aggregator.
+#
+# Runs every executable adapter in events/sources/, each of which prints a JSON
+# array of normalized event objects:
+#
+#   { "title", "start", "end", "all_day", "date", "sort", "source" }
+#
+# then merges them, filters to today (in $EVENTS_TZ), and sorts: all-day events
+# first, then by start time, then title. Overlapping events are kept on purpose
+# (conflicts are allowed). Adding a new calendar = drop a new executable adapter
+# into events/sources/ that emits the schema above.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/../.env" 2>/dev/null
+
+EVENTS_TZ="${EVENTS_TZ:-America/Los_Angeles}"
+EVENTS_TODAY=$(TZ="$EVENTS_TZ" date +%Y-%m-%d)
+export NOTES_DIRECTORY NOTES_EVENTS_SUBDIR LUMA_ICS_URL EVENTS_TZ EVENTS_TODAY
+
+all='[]'
+for adapter in "$SCRIPT_DIR"/sources/*; do
+  [ -x "$adapter" ] || continue
+  out=$("$adapter" 2>/dev/null)
+  printf '%s' "$out" | jq empty 2>/dev/null || out='[]'
+  all=$(jq -n --argjson acc "$all" --argjson next "$out" '$acc + $next')
+done
+
+printf '%s' "$all" | jq --arg today "$EVENTS_TODAY" '
+  [ .[] | select(.date == $today) ]
+  | sort_by([(.all_day | not), .sort, .title])
+'

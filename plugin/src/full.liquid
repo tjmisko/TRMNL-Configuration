@@ -53,7 +53,10 @@
         <div class="label" style="margin: 0; padding: 0; line-height: 1.2;">Calendar Events</div>
         <div style="padding-left: 16px;">
           {% for event in events %}
-          <div style="padding: 2px 0; border-bottom: 1px dashed #999; font-size: {{ left_font }}; font-weight: normal;">{{ event }}</div>
+          <div style="display: flex; gap: 8px; padding: 2px 0; border-bottom: 1px dashed #999; font-size: {{ left_font }}; font-weight: normal;">
+            <span style="flex-shrink: 0; min-width: 84px;">{% if event.all_day %}All day{% else %}{{ event.start }}{% if event.end %}&ndash;{{ event.end }}{% endif %}{% endif %}</span>
+            <span>{{ event.title }}</span>
+          </div>
           {% endfor %}
         </div>
       </div>
