@@ -4,7 +4,7 @@ no_screen_padding: 'no'
 dark_mode: 'no'
 static_data: ''
 polling_verb: get
-polling_url: https://retend.app/trmnl.json
+polling_url: http://host.docker.internal:9473/trmnl.json
 polling_headers: content-type=application/json
 polling_body: ''
 id: 243914

@@ -1,30 +1,33 @@
 #!/usr/bin/env bash
-# Events source adapter: recurring weekly events from the Notes repo.
+# Events source adapter: recurring weekly events from the Notes vault.
 #
-# Scans Markdown notes under $NOTES_DIRECTORY/$NOTES_EVENTS_SUBDIR (default
-# subdir: "events") whose YAML frontmatter describes a weekly recurring event,
-# and emits the occurrences that fall on *today* as a JSON array of normalized
-# event objects (schema documented in events/README.md).
+# Scans Markdown notes anywhere under $NOTES_DIRECTORY whose YAML frontmatter is
+# tagged with BOTH `event` and `recurring`, and emits the ones whose `weekday`
+# matches *today* as a JSON array of normalized event objects (schema in
+# events/README.md).
 #
-# Expected frontmatter (kept simple; first --- block at the top of the file):
+# Expected frontmatter (first --- block at the top of the file):
 #   ---
-#   start: "18:00"      # 24-hour local time
-#   end:   "20:00"      # optional
-#   day:   Tuesday      # weekday; also accepts `days: [Tue, Thu]`
-#   title: Climbing     # optional; falls back to the filename
+#   start: 20:00          # 24-hour local time (omit for an all-day event)
+#   end:   23:30          # optional
+#   weekday: Monday       # full or 3-letter; also accepts a CSV list (Mon, Thu)
+#   message: Bring ID     # optional; rendered as an indented sub-line
+#   tags:
+#     - event
+#     - recurring
 #   ---
+# Title defaults to the note's filename (override with a `title:` field).
 #
 # Overlapping/conflicting events are intentionally kept. Emits [] if the notes
-# directory or events subdir is missing.
+# directory is unset or missing.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/../../.env" 2>/dev/null
 
 EVENTS_TZ="${EVENTS_TZ:-America/Los_Angeles}"
 TODAY="${EVENTS_TODAY:-$(TZ="$EVENTS_TZ" date +%Y-%m-%d)}"
-SUBDIR="${NOTES_EVENTS_SUBDIR:-events}"
-ROOT="$NOTES_DIRECTORY/$SUBDIR"
+ROOT="${NOTES_DIRECTORY:-}"
 
-if [[ -z "${NOTES_DIRECTORY:-}" || ! -d "$ROOT" ]]; then
+if [[ -z "$ROOT" || ! -d "$ROOT" ]]; then
   echo '[]'
   exit 0
 fi
@@ -32,7 +35,12 @@ fi
 TODAY_FULL=$(TZ="$EVENTS_TZ" date +%A | tr '[:upper:]' '[:lower:]')
 TODAY_ABBR=${TODAY_FULL:0:3}
 
-# Extract a single frontmatter value by key (case-insensitive), trimming quotes.
+# Extract the YAML frontmatter block (first --- ... --- at the top), CR-stripped.
+frontmatter() {
+  awk '{sub(/\r$/,"")} NR==1 && $0=="---"{f=1;next} f && $0=="---"{exit} f{print}' "$1"
+}
+
+# Single-line frontmatter value by key (case-insensitive), quotes trimmed.
 fm_get() {
   printf '%s\n' "$1" \
     | sed -n "s/^[[:space:]]*$2[[:space:]]*:[[:space:]]*//Ip" \
@@ -40,17 +48,45 @@ fm_get() {
     | sed 's/\r$//; s/^["'\'']//; s/["'\'']$//'
 }
 
+# Frontmatter tags as lowercase tokens, one per line. Handles the YAML block
+# list, an inline [a, b] array, and a bare CSV; tolerates a leading `#`.
+fm_tags() {
+  printf '%s\n' "$1" | awk '
+    /^tags[[:space:]]*:/ {
+      intag=1; rest=$0; sub(/^tags[[:space:]]*:[[:space:]]*/,"",rest)
+      if (rest != "") print rest
+      next
+    }
+    intag {
+      if ($0 ~ /^[[:space:]]*-[[:space:]]*/) { sub(/^[[:space:]]*-[[:space:]]*/,""); print; next }
+      if ($0 ~ /^[^[:space:]]/) { intag=0 }
+    }
+  ' \
+    | tr ',[]' '   ' \
+    | tr '[:upper:]' '[:lower:]' \
+    | tr -s '[:space:]' '\n' \
+    | sed 's/^#//; s/^["'\'']//; s/["'\'']$//' \
+    | grep -v '^$'
+}
+
 emit_one() {
-  local file="$1" fm days start end title
-  fm=$(awk 'NR==1 && $0=="---"{f=1; next} f && $0=="---"{exit} f{print}' "$file")
+  local file="$1" fm tags days start end title message
+  fm=$(frontmatter "$file")
   [[ -z "$fm" ]] && return
 
-  days=$(printf '%s %s' "$(fm_get "$fm" day)" "$(fm_get "$fm" days)" \
+  # Identify a recurring event: must carry BOTH the `event` and `recurring` tags.
+  tags=$(fm_tags "$fm")
+  grep -qx 'event' <<<"$tags" || return
+  grep -qx 'recurring' <<<"$tags" || return
+
+  # Show only if its weekday is today (full or 3-letter, case-insensitive, CSV ok).
+  days=$(printf '%s %s' "$(fm_get "$fm" weekday)" "$(fm_get "$fm" weekdays)" \
     | tr '[:upper:]' '[:lower:]')
   echo "$days" | grep -qE "(^|[^a-z])($TODAY_FULL|$TODAY_ABBR)([^a-z]|$)" || return
 
   start=$(fm_get "$fm" start)
   end=$(fm_get "$fm" end)
+  message=$(fm_get "$fm" message)
   title=$(fm_get "$fm" title)
   [[ -z "$title" ]] && title=$(basename "$file" .md)
 
@@ -58,20 +94,24 @@ emit_one() {
     --arg title "$title" \
     --arg start "$start" \
     --arg end "$end" \
+    --arg message "$message" \
     --arg date "$TODAY" '
     {
       title:   $title,
       start:   (if $start == "" then null else $start end),
       end:     (if $end == "" then null else $end end),
       all_day: ($start == ""),
+      message: (if $message == "" then null else $message end),
       date:    $date,
       sort:    ($date + "T" + (if $start == "" then "00:00" else $start end)),
       source:  "recurring"
     }'
 }
 
+# Prefilter to notes that even mention the `recurring` tag, so we only parse
+# frontmatter where it could match; the per-file check enforces both tags.
 {
-  while IFS= read -r -d '' file; do
-    emit_one "$file"
-  done < <(find "$ROOT" -type f -name '*.md' -print0)
+  while IFS= read -r file; do
+    [[ -n "$file" ]] && emit_one "$file"
+  done < <(rg -l --no-messages -i --glob '*.md' -- 'recurring' "$ROOT")
 } | jq -s 'sort_by(.sort, .title)'

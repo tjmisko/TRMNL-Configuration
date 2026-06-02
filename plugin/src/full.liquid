@@ -18,7 +18,8 @@
 {% assign birthday_count = birthdays | size %}
 {% if birthday_count != 0 %}{% assign left_rows = left_rows | plus: 1 | plus: birthday_count %}{% endif %}
 {% assign event_count = events | size %}
-{% if event_count != 0 %}{% assign left_rows = left_rows | plus: 1 | plus: event_count %}{% endif %}
+{% assign event_msg_count = 0 %}{% for e in events %}{% if e.message != blank %}{% assign event_msg_count = event_msg_count | plus: 1 %}{% endif %}{% endfor %}
+{% if event_count != 0 %}{% assign left_rows = left_rows | plus: 1 | plus: event_count | plus: event_msg_count %}{% endif %}
 {% if is_last_day_of_month %}{% assign eom_count = checklists.end_of_month | size %}{% assign left_rows = left_rows | plus: 1 | plus: eom_count %}{% endif %}
 {% if is_sunday %}{% assign sun_count = checklists.sunday | size %}{% assign left_rows = left_rows | plus: 1 | plus: sun_count %}{% endif %}
 {% assign task_count = tasks | size %}
@@ -31,8 +32,8 @@
 {% endif %}
 
 <div class="layout" style="flex: 1;">
-  <div class="columns" style="height: 100%; padding: 0 16px; gap: 24px;">
-    <div class="column" style="flex: 69; height: 100%; display: flex; flex-direction: column; justify-content: center; font-family: monospace; white-space: normal;">
+  <div class="columns" data-adjust-column-gaps="false" style="height: 100%; padding: 0 16px; gap: 32px;">
+    <div class="column" style="flex: 66; height: 100%; display: flex; flex-direction: column; justify-content: center; font-family: monospace; white-space: normal;">
       {% if left_rows == 0 %}
       <div style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 20px; font-weight: bold;">
         Nothing on the docket!
@@ -50,12 +51,17 @@
       {% endif %}
       {% if event_count != 0 %}
       <div>
-        <div class="label" style="margin: 0; padding: 0; line-height: 1.2;">Calendar Events</div>
+        <div class="label" style="margin: 0; padding: 0; line-height: 1.2;">Events</div>
         <div style="padding-left: 16px;">
           {% for event in events %}
-          <div style="display: flex; gap: 8px; padding: 2px 0; border-bottom: 1px dashed #999; font-size: {{ left_font }}; font-weight: normal;">
-            <span style="flex-shrink: 0; min-width: 84px;">{% if event.all_day %}All day{% else %}{{ event.start }}{% if event.end %}&ndash;{{ event.end }}{% endif %}{% endif %}</span>
-            <span>{{ event.title }}</span>
+          <div style="padding: 2px 0; border-bottom: 1px dashed #999; font-size: {{ left_font }}; font-weight: normal;">
+            <div style="display: flex; gap: 8px;">
+              <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ event.title }}</span>
+              <span style="flex-shrink: 0; text-align: right;">{% if event.all_day %}All day{% else %}{{ event.start }}{% if event.end %}&ndash;{{ event.end }}{% endif %}{% endif %}</span>
+            </div>
+            {% if event.message != blank %}
+            <div style="padding-left: 16px; font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ event.message }}</div>
+            {% endif %}
           </div>
           {% endfor %}
         </div>
@@ -103,7 +109,7 @@
       {% endif %}
     </div>
 
-    <div class="column" style="flex: 31; height: 100%; display: flex; white-space: nowrap; flex-direction: column; justify-content: center; gap: 16px; font-family: monospace; font-size: 16px;">
+    <div class="column" style="flex: 34; height: 100%; display: flex; white-space: nowrap; flex-direction: column; justify-content: center; gap: 16px; font-family: monospace; font-size: 16px;">
       <div>
         <div class="label" style="margin: 0; padding: 0; line-height: 1.2;">Weather</div>
         <div>
