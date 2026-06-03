@@ -126,6 +126,17 @@
             <span>{{ weather.oakland.high }}&deg;F/{{ weather.oakland.low }}&deg;F</span>
           </div>
           {% endif %}
+          {% if weather.berkeley_marina %}
+          <div style="padding: 3px 0; border-bottom: 1px dashed #ccc;">
+            <div style="display: flex; justify-content: space-between; gap: 16px;">
+              <span style="min-width: 110px;">Berkeley Marina</span>
+              <span>{{ weather.berkeley_marina.high }}&deg;F/{{ weather.berkeley_marina.low }}&deg;F</span>
+            </div>
+            <div style="font-size: 12px; font-weight: normal; padding-left: 8px;">
+              Wind {{ weather.berkeley_marina.wind.dir }} {{ weather.berkeley_marina.wind.speed_kt }} kt{% if weather.berkeley_marina.wind.gust_kt %} (G {{ weather.berkeley_marina.wind.gust_kt }}){% endif %}
+            </div>
+          </div>
+          {% endif %}
         </div>
       </div>
       <div>

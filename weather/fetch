@@ -62,13 +62,82 @@ else
   OAK_ALERTS="[]"
 fi
 
+# ── Berkeley Marina: forecast high/low + live wind (knots) ───────────
+# Wind is the live observation from the nearest reliable station ($MARINA_WIND_STATION,
+# default KOAK); if that ob is missing or stale (>2h) we fall back to the gridpoint
+# forecast wind, so the row always shows a wind reading.
+MARINA_FORECAST_URL="https://api.weather.gov/gridpoints/MTR/89,108/forecast"
+MARINA_WIND_STATION="${MARINA_WIND_STATION:-KOAK}"
+MARINA_OBS_URL="https://api.weather.gov/stations/${MARINA_WIND_STATION}/observations/latest"
+
+BM_RAW=$(curl -sf -H "User-Agent: $UA" "$MARINA_FORECAST_URL")
+BM_OK=$?
+BM_OBS_RAW=$(curl -sf -H "User-Agent: $UA" "$MARINA_OBS_URL")
+BM_OBS_OK=$?
+
+if [ $BM_OBS_OK -ne 0 ] || [ -z "$BM_OBS_RAW" ]; then
+  BM_OBS_JSON="null"
+  BM_OBS_AGE=999999
+else
+  BM_OBS_JSON="$BM_OBS_RAW"
+  BM_OBS_TS=$(printf '%s' "$BM_OBS_RAW" | jq -r '.properties.timestamp // empty')
+  BM_OBS_EPOCH=$([ -n "$BM_OBS_TS" ] && date -d "$BM_OBS_TS" +%s 2>/dev/null)
+  if [ -n "$BM_OBS_EPOCH" ]; then
+    BM_OBS_AGE=$(( $(date +%s) - BM_OBS_EPOCH ))
+  else
+    BM_OBS_AGE=999999
+  fi
+fi
+
+if [ $BM_OK -eq 0 ]; then
+  BERKELEY_MARINA=$(jq -n \
+    --slurpfile fc <(printf '%s' "$BM_RAW") \
+    --slurpfile obs <(printf '%s' "$BM_OBS_JSON") \
+    --argjson obs_age "$BM_OBS_AGE" '
+    def kmh_to_kt: . * 0.539957;
+    def mph_to_kt: . * 0.868976;
+    def deg2compass:
+      ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"]
+      [(((. / 22.5) + 0.5) | floor) % 16];
+    def mph_max: ([scan("[0-9]+") | tonumber] | max // 0);
+    ($fc[0].properties.periods) as $p |
+    ($p | map(select(.isDaytime))       | .[0].temperature) as $high |
+    ($p | map(select(.isDaytime | not)) | .[0].temperature) as $low |
+    (($p[0].windSpeed // "") | mph_max | mph_to_kt | round) as $fc_kt |
+    ($p[0].windDirection // null) as $fc_dir |
+    ((($obs[0] // {}).properties) // {}) as $o |
+    ($o.windSpeed.value) as $spd |
+    ($o.windGust.value) as $gust |
+    ($o.windDirection.value) as $dir |
+    (($obs_age < 7200) and ($spd != null) and ($dir != null)) as $obs_ok |
+    {
+      high: $high,
+      low: $low,
+      wind: (if $obs_ok then {
+          dir: ($dir | deg2compass),
+          speed_kt: ($spd | kmh_to_kt | round),
+          gust_kt: (if $gust != null then ($gust | kmh_to_kt | round) else null end),
+          source: "observed"
+        } else {
+          dir: $fc_dir,
+          speed_kt: $fc_kt,
+          gust_kt: null,
+          source: "forecast"
+        } end)
+    }')
+else
+  BERKELEY_MARINA="null"
+fi
+
 jq -n \
   --argjson sf_forecast "$SF_FORECAST" \
   --argjson oak_forecast "$OAK_FORECAST" \
   --argjson sf_alerts "${SF_ALERTS:-[]}" \
-  --argjson oak_alerts "${OAK_ALERTS:-[]}" '
+  --argjson oak_alerts "${OAK_ALERTS:-[]}" \
+  --argjson berkeley_marina "${BERKELEY_MARINA:-null}" '
   {
     sf: (if $sf_forecast == null then null else ($sf_forecast + {alerts: $sf_alerts}) end),
-    oakland: (if $oak_forecast == null then null else ($oak_forecast + {alerts: $oak_alerts}) end)
+    oakland: (if $oak_forecast == null then null else ($oak_forecast + {alerts: $oak_alerts}) end),
+    berkeley_marina: $berkeley_marina
   }
 '
