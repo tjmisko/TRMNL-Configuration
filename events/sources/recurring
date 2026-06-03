@@ -101,7 +101,7 @@ emit_one() {
     {
       title:   $title,
       start:   (if $start == "" then null else $start end),
-      end:     (if $end == "" then null else $end end),
+      "end":   (if $end == "" then null else $end end),
       all_day: ($start == ""),
       message: (if $message == "" then null else $message end),
       date:    $date,
