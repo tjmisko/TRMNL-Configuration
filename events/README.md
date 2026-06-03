@@ -102,11 +102,11 @@ event when its frontmatter is tagged with **both** `event` and `recurring`:
 
 ```markdown
 ---
-start: 20:00          # 24-hour local time (omit for an all-day event)
-end:   23:30          # optional
-weekday: Monday       # full or 3-letter; also accepts a CSV list (Mon, Thu)
-message: Bring your ID # optional; rendered as an indented sub-line
-title: Shades         # optional; defaults to the note's filename
+start: 18:00            # 24-hour local time (omit for an all-day event)
+end:   19:30            # optional
+weekday: Tuesday        # full or 3-letter; also accepts a CSV list (Mon, Thu)
+message: Bring your copy # optional; rendered as an indented sub-line
+title: Book Club        # optional; defaults to the note's filename
 tags:
   - event
   - recurring

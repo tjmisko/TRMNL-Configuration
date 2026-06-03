@@ -3,5 +3,7 @@ trmnl.json
 .env
 BART/bart
 events/sources/ics
-events/feeds.conf
-events/ignore.conf
+# Private calendar/filter configs (real feed URLs, ignore globs). Auto-ignore
+# any events/*.conf so new ones can't be committed by accident; keep examples.
+events/*.conf
+!events/*.conf.example
