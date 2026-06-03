@@ -2,4 +2,6 @@ trmnl.json
 .worktrees/
 .env
 BART/bart
-events/sources/luma
+events/sources/ics
+events/feeds.conf
+events/ignore.conf

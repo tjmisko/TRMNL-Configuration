@@ -47,13 +47,28 @@ else
   echo "BART binary is up to date"
 fi
 
-# ── 3b. Build Luma events binary ────────────────────────────────────
-if [[ ! -f events/sources/luma || events/luma/luma.go -nt events/sources/luma ]]; then
-  echo "Building Luma events binary..."
-  (cd events/luma && go build -o ../sources/luma .)
-  echo "Luma built"
+# ── 3b. Build ICS events binary ─────────────────────────────────────
+if [[ ! -f events/sources/ics || events/ics/ics.go -nt events/sources/ics ]]; then
+  echo "Building ICS events binary..."
+  (cd events/ics && go build -o ../sources/ics .)
+  echo "ICS built"
 else
-  echo "Luma binary is up to date"
+  echo "ICS binary is up to date"
+fi
+
+# ── 3c. Seed events config files from their examples ────────────────
+if [[ ! -f events/feeds.conf ]]; then
+  cp events/feeds.conf.example events/feeds.conf
+  echo "events/feeds.conf created — add your Luma/Google calendar feeds to it"
+else
+  echo "events/feeds.conf already exists, skipping"
+fi
+
+if [[ ! -f events/ignore.conf ]]; then
+  cp events/ignore.conf.example events/ignore.conf
+  echo "events/ignore.conf created — add title globs for events to hide"
+else
+  echo "events/ignore.conf already exists, skipping"
 fi
 
 # ── 4. Ensure scripts are executable ────────────────────────────────

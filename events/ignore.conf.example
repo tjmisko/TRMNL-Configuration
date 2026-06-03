@@ -1,0 +1,16 @@
+# events/ignore.conf — drop-filter for events you never want on the dashboard.
+#
+# Copy to events/ignore.conf (gitignored) and add patterns. An event is dropped
+# if its TITLE matches ANY line here (OR), case-insensitively.
+#
+# Lines are shell-style globs:
+#   *         matches any run of characters
+#   ?         matches a single character
+#   #-lines   and blank lines are ignored
+# Everything else is matched literally (so ":" "(" "." etc. are fine as-is).
+#
+# Examples:
+# HOLD:*            # drop placeholder "HOLD: ..." events
+# *members only*    # drop anything flagged members-only
+# *[CANCELLED]*     # drop titles literally containing [CANCELLED]
+# Daily Standup*    # drop a recurring series you skip

@@ -6,16 +6,21 @@
 #
 #   { "title", "start", "end", "all_day", "date", "sort", "source" }
 #
-# then merges them, filters to today (in $EVENTS_TZ), and sorts: all-day events
-# first, then by start time, then title. Overlapping events are kept on purpose
-# (conflicts are allowed). Adding a new calendar = drop a new executable adapter
-# into events/sources/ that emits the schema above.
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# then merges them, filters to today (in $EVENTS_TZ), drops any whose title
+# matches a glob in events/ignore.conf, sorts (all-day events first, then by
+# start time, then title), and collapses exact duplicates (same title + start,
+# e.g. an event cross-posted to two calendars). Genuine conflicts at different
+# times are kept on purpose. Adding a new calendar = drop a new executable
+# adapter into events/sources/ that emits the schema above.
+# >/dev/null guards against a set CDPATH making `cd` echo the path (which would
+# otherwise be captured into SCRIPT_DIR and double it).
+SCRIPT_DIR="$(cd "$(dirname "$0")" >/dev/null 2>&1 && pwd)"
 source "$SCRIPT_DIR/../.env" 2>/dev/null
 
 EVENTS_TZ="${EVENTS_TZ:-America/Los_Angeles}"
 EVENTS_TODAY=$(TZ="$EVENTS_TZ" date +%Y-%m-%d)
-export NOTES_DIRECTORY NOTES_EVENTS_SUBDIR LUMA_ICS_URL EVENTS_TZ EVENTS_TODAY
+EVENTS_FEEDS_FILE="${EVENTS_FEEDS_FILE:-$SCRIPT_DIR/feeds.conf}"
+export NOTES_DIRECTORY NOTES_EVENTS_SUBDIR LUMA_ICS_URL EVENTS_FEEDS_FILE EVENTS_TZ EVENTS_TODAY
 
 all='[]'
 for adapter in "$SCRIPT_DIR"/sources/*; do
@@ -25,7 +30,36 @@ for adapter in "$SCRIPT_DIR"/sources/*; do
   all=$(jq -n --argjson acc "$all" --argjson next "$out" '$acc + $next')
 done
 
-printf '%s' "$all" | jq --arg today "$EVENTS_TODAY" '
-  [ .[] | select(.date == $today) ]
+# Build a single case-insensitive regex from the OR of title globs in
+# ignore.conf (each line: a shell-style glob, # comments and blanks ignored).
+# Globs are anchored and translated to regex (* → .*, ? → .); other regex
+# metacharacters are escaped so they match literally. Empty → no filtering.
+IGNORE_FILE="${EVENTS_IGNORE_FILE:-$SCRIPT_DIR/ignore.conf}"
+IGNORE_RE=""
+if [[ -f "$IGNORE_FILE" ]]; then
+  IGNORE_RE=$(
+    sed -e 's/\r$//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' "$IGNORE_FILE" \
+      | grep -vE '^(#|$)' \
+      | sed -e 's/[.[\(){}^$+|]/\\&/g' -e 's/]/\\]/g' \
+            -e 's/\*/.*/g' -e 's/?/./g' -e 's/^/^/' -e 's/$/$/' \
+      | paste -sd'|' -
+  )
+fi
+
+printf '%s' "$all" | jq --arg today "$EVENTS_TODAY" --arg re "$IGNORE_RE" '
+  # Strip emoji (pictographs, dingbats, symbols, ZWJ/skin-tone/variation
+  # selectors) from a title, then collapse and trim leftover whitespace.
+  def strip_emoji:
+    gsub("[\\x{1F000}-\\x{1FAFF}\\x{2300}-\\x{27BF}\\x{2B00}-\\x{2BFF}\\x{FE00}-\\x{FE0F}\\x{200D}\\x{20E3}]"; "")
+    | gsub("\\s+"; " ") | sub("^ +"; "") | sub(" +$"; "");
+  [ .[]
+    | select(.date == $today)
+    | .title |= strip_emoji
+    | select($re == "" or (.title | test($re; "i") | not))
+  ]
   | sort_by([(.all_day | not), .sort, .title])
+  | reduce .[] as $e ({seen: {}, out: []};
+      ($e.date + "|" + ($e.start // "all-day") + "|" + $e.title) as $k
+      | if .seen[$k] then . else .seen[$k] = true | .out += [$e] end)
+  | .out
 '

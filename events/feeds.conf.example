@@ -1,0 +1,20 @@
+# events/feeds.conf — calendar feeds for the events pipeline.
+#
+# Copy to events/feeds.conf (gitignored) and add your own feeds. The events/ics
+# adapter fetches every feed here, expands recurring events to today, and blends
+# them with the recurring-notes source.
+#
+# Format: one feed per line, "<label>  <url>" (whitespace-separated).
+#   - <label> is internal provenance only (it tags the event's "source" field);
+#     it is never shown on the device. Use anything memorable.
+#   - A line with only a URL gets a label derived from its host (luma / gcal / …).
+#   - Blank lines and lines starting with # are ignored.
+#
+# Luma:   calendar page → Subscribe / "Add to Calendar" → the
+#         https://api.lu.ma/ics/get?... link.
+# Google: Calendar settings → "Integrate calendar" → "Secret address in iCal
+#         format" → the https://calendar.google.com/calendar/ical/.../basic.ics link.
+#
+# luma-commons   https://api.lu.ma/ics/get?u=YOUR_TOKEN
+# luma-personal  https://api.lu.ma/ics/get?u=YOUR_TOKEN
+# gcal           https://calendar.google.com/calendar/ical/YOUR_ID/private-XXX/basic.ics

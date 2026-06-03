@@ -10,9 +10,9 @@ update                 →  EVENTS=$(events/fetch)            →  trmnl.json {.
 events/fetch (aggregator)         │  runs every executable in sources/,
                                   │  merges, filters to today, sorts
         ┌─────────────────────────┴─────────────────────────┐
-sources/recurring (bash+jq)                       sources/luma (Go binary)
-   Notes repo weekly events                          Luma .ics feed
-   $NOTES_DIRECTORY/$NOTES_EVENTS_SUBDIR             $LUMA_ICS_URL
+sources/recurring (bash+jq)                       sources/ics (Go binary)
+   Notes repo weekly events                          N .ics feeds (Luma, Google…)
+   $NOTES_DIRECTORY                                  events/feeds.conf
 ```
 
 `events/fetch` is the only place that knows the time window ("today"). Each
@@ -37,16 +37,62 @@ Every adapter emits objects with this shape:
 
 `date`, `sort`, and `source` are used only by the aggregator — the device
 renders **time + title**, plus the optional `message` as an indented line
-beneath it. Sources that have no message may omit the field. Overlapping events
-are kept on purpose (conflicts are allowed); nothing is de-duplicated.
+beneath it. Sources that have no message may omit the field. Genuine conflicts
+(different events at overlapping times) are kept on purpose; only **exact
+duplicates** — same title and same start, e.g. one event cross-posted to two
+calendars — are collapsed to a single entry by the aggregator.
 
-## Configuration (.env)
+## Configuration
+
+`.env` (general):
 
 ```sh
-LUMA_ICS_URL=""                       # Luma "Add to Calendar" .ics URL (blank → no Luma events)
 NOTES_DIRECTORY="/path/to/vault"      # Notes vault scanned for recurring-event notes (shared with tasks)
-EVENTS_TZ="America/Los_Angeles"       # zone used to resolve "today" and localize times
+EVENTS_TZ="America/Los_Angeles"       # zone used to resolve "today" and localize times (Pacific w/ DST)
 ```
+
+Calendar feeds live in their own file, **`events/feeds.conf`** (gitignored;
+`setup` seeds it from `events/feeds.conf.example`). One feed per line,
+`<label>  <url>`; `#` comments and blank lines ignored:
+
+```sh
+luma-commons   https://api.lu.ma/ics/get?u=...        # Luma: Subscribe / "Add to Calendar"
+luma-personal  https://api.lu.ma/ics/get?u=...
+gcal           https://calendar.google.com/.../basic.ics  # Google: Settings → Secret iCal address
+```
+
+`<label>` only tags the event's internal `source` field (never shown). A line
+with just a URL gets a label derived from its host (`luma`/`gcal`/…). The legacy
+`LUMA_ICS_URL` env var, if set, is still honored as one extra feed labeled `luma`.
+
+### Recurring events (RRULE)
+
+The `ics` adapter expands recurring feed events to today's occurrence. Supported:
+`FREQ` DAILY/WEEKLY/MONTHLY/YEARLY with `INTERVAL`, `BYDAY` (including ordinals
+like `2MO`/`-1SU` for MONTHLY), `BYMONTHDAY`, `BYMONTH`, `UNTIL`, `COUNT`, and
+`EXDATE`. `STATUS:CANCELLED` events are dropped; a `RECURRENCE-ID` instance is
+emitted on its own date and suppresses that date on its master series (by `UID`).
+All-day spans use an exclusive `DTEND`, so a multi-day event shows on every day
+it covers. Times stay anchored to the original wall-clock across DST.
+Not yet handled: `DURATION` (uses `DTEND`), `BYSETPOS`, `WKST` other than Monday.
+
+### Hiding events (ignore.conf)
+
+To drop events you never want on the dashboard, list **title globs** in
+**`events/ignore.conf`** (gitignored; `setup` seeds it from
+`events/ignore.conf.example`). The aggregator drops an event if its title
+matches **any** line (OR), case-insensitively — across every source, before
+sorting and de-duplication:
+
+```sh
+HOLD:*            # placeholder events
+*members only*    # anything members-only
+Daily Standup*    # a recurring series you skip
+```
+
+`*` matches any run of characters, `?` a single character; everything else
+(`:`, `(`, `.`, …) is matched literally. `#` comments and blank lines are
+ignored. The path is overridable with `$EVENTS_IGNORE_FILE`.
 
 ## Recurring-event notes
 
@@ -78,12 +124,14 @@ days via `weekday: Mon, Thu`. `tags` may be a YAML list (as above), an inline
 Drop a new executable into `events/sources/` that prints the normalized array
 and exits 0. That's it — the aggregator discovers it automatically.
 
+- **Another ICS feed** → just add a line to `events/feeds.conf`; the `ics`
+  adapter already handles any RFC 5545 feed.
 - **Quick/script source** → bash + jq (see `sources/recurring`).
-- **Network/parsing-heavy source** (another ICS feed, an API) → a Go binary
-  built into `events/sources/<name>` (see `luma/`, mirroring `BART/`). Add its
-  build step to `setup` and its output path to `.gitignore`.
+- **Network/parsing-heavy source** (a non-ICS API) → a Go binary built into
+  `events/sources/<name>` (see `ics/`, mirroring `BART/`). Add its build step to
+  `setup` and its output path to `.gitignore`.
 
 Read any per-source config from the environment; the aggregator exports
-`NOTES_DIRECTORY`, `NOTES_EVENTS_SUBDIR`, `LUMA_ICS_URL`, `EVENTS_TZ`, and
-`EVENTS_TODAY` (use `EVENTS_TODAY` so every adapter agrees on the date even
-across a midnight boundary).
+`NOTES_DIRECTORY`, `NOTES_EVENTS_SUBDIR`, `LUMA_ICS_URL`, `EVENTS_FEEDS_FILE`,
+`EVENTS_TZ`, and `EVENTS_TODAY` (use `EVENTS_TODAY` so every adapter agrees on
+the date even across a midnight boundary).

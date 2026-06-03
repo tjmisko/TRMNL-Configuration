@@ -20,7 +20,9 @@
 #
 # Overlapping/conflicting events are intentionally kept. Emits [] if the notes
 # directory is unset or missing.
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# >/dev/null guards against a set CDPATH making `cd` echo the path (which would
+# otherwise be captured into SCRIPT_DIR and double it).
+SCRIPT_DIR="$(cd "$(dirname "$0")" >/dev/null 2>&1 && pwd)"
 source "$SCRIPT_DIR/../../.env" 2>/dev/null
 
 EVENTS_TZ="${EVENTS_TZ:-America/Los_Angeles}"
