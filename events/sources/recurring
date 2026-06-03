@@ -95,13 +95,13 @@ emit_one() {
   jq -n \
     --arg title "$title" \
     --arg start "$start" \
-    --arg end "$end" \
+    --arg end_time "$end" \
     --arg message "$message" \
     --arg date "$TODAY" '
     {
       title:   $title,
       start:   (if $start == "" then null else $start end),
-      "end":   (if $end == "" then null else $end end),
+      "end":   (if $end_time == "" then null else $end_time end),
       all_day: ($start == ""),
       message: (if $message == "" then null else $message end),
       date:    $date,
