@@ -10,22 +10,24 @@ IS_LAST_DAY_OF_MONTH=$([[ $(date +"%d") == $(date -d "$(date +%Y-%m-01) +1 month
 validate_json() {
   local raw="$1"
   local fallback="$2"
+  local name="${3:-data}"
   if printf '%s' "$raw" | jq empty 2>/dev/null; then
     printf '%s' "$raw"
   else
+    printf 'update: %s produced invalid JSON; using fallback\n' "$name" >&2
     printf '%s' "$fallback"
   fi
 }
 
-BIRTHDAYS=$(validate_json "$("$SCRIPT_DIR"/birthday/fetch)" '[]')
-TASKS=$(validate_json "$("$SCRIPT_DIR"/tasks/fetch)" '[]')
-WEATHER=$(validate_json "$("$SCRIPT_DIR"/weather/fetch)" '{}')
+BIRTHDAYS=$(validate_json "$("$SCRIPT_DIR"/birthday/fetch)" '[]' birthdays)
+TASKS=$(validate_json "$("$SCRIPT_DIR"/tasks/fetch)" '[]' tasks)
+WEATHER=$(validate_json "$("$SCRIPT_DIR"/weather/fetch)" '{}' weather)
 
-CHECKLISTS=$(validate_json "$("$SCRIPT_DIR"/checklists/fetch)" '{"sunday":[],"end_of_month":[]}')
+CHECKLISTS=$(validate_json "$("$SCRIPT_DIR"/checklists/fetch)" '{"sunday":[],"end_of_month":[]}' checklists)
 
-BART=$(validate_json "$("$SCRIPT_DIR"/BART/bart)" '[]')
+BART=$(validate_json "$("$SCRIPT_DIR"/BART/bart)" '[]' bart)
 
-EVENTS=$(validate_json "$("$SCRIPT_DIR"/events/fetch)" '[]')
+EVENTS=$(validate_json "$("$SCRIPT_DIR"/events/fetch)" '[]' events)
 
 jq -n \
   --arg greetings "Greetings from retend.app" \

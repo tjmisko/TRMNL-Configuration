@@ -26,7 +26,11 @@ all='[]'
 for adapter in "$SCRIPT_DIR"/sources/*; do
   [ -x "$adapter" ] || continue
   out=$("$adapter" 2>/dev/null)
-  printf '%s' "$out" | jq empty 2>/dev/null || out='[]'
+  if ! printf '%s' "$out" | jq empty 2>/dev/null; then
+    printf 'events/fetch: adapter %s produced invalid JSON; using []\n' \
+      "$(basename "$adapter")" >&2
+    out='[]'
+  fi
   all=$(jq -n --argjson acc "$all" --argjson next "$out" '$acc + $next')
 done
 
