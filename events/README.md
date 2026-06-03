@@ -131,6 +131,18 @@ and exits 0. That's it — the aggregator discovers it automatically.
   `events/sources/<name>` (see `ics/`, mirroring `BART/`). Add its build step to
   `setup` and its output path to `.gitignore`.
 
+### Cal Sailing Club open/close (`csc`)
+
+`events/csc/` (Go, stdlib only) scrapes the club's published open/close schedule
+(`csc-openclose-times?view=month`) and emits a single timed event titled
+**"Cal Sailing Club @ Berkeley Marina"** for `$EVENTS_TODAY` (start = open, end =
+close). The page is server-rendered; rows are parsed by their NOAA `bdate`, and
+12-hour times (incl. the literal `Noon`) are converted to 24-hour. A closed day,
+a missing date, or any error yields `[]`. A successful fetch is cached to
+`events/sources/.csc-cache.json` (the whole visible month) and reused when the
+site is unreachable, so the schedule keeps rendering through an outage.
+Overridable via `$CSC_URL` and `$CSC_CACHE_FILE`.
+
 Read any per-source config from the environment; the aggregator exports
 `NOTES_DIRECTORY`, `NOTES_EVENTS_SUBDIR`, `LUMA_ICS_URL`, `EVENTS_FEEDS_FILE`,
 `EVENTS_TZ`, and `EVENTS_TODAY` (use `EVENTS_TODAY` so every adapter agrees on

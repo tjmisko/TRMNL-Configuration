@@ -1,1 +1,4 @@
 * text=auto eol=lf
+# Test fixtures are captured HTTP responses; keep them byte-for-byte (incl. CRLF)
+# so parsers are exercised against exactly what the live server returns.
+events/csc/testdata/** -text

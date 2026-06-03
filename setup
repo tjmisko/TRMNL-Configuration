@@ -56,6 +56,15 @@ else
   echo "ICS binary is up to date"
 fi
 
+# ── 3b2. Build CSC open/close events binary ─────────────────────────
+if [[ ! -f events/sources/csc || events/csc/csc.go -nt events/sources/csc ]]; then
+  echo "Building CSC events binary..."
+  (cd events/csc && go build -o ../sources/csc .)
+  echo "CSC built"
+else
+  echo "CSC binary is up to date"
+fi
+
 # ── 3c. Seed events config files from their examples ────────────────
 if [[ ! -f events/feeds.conf ]]; then
   cp events/feeds.conf.example events/feeds.conf
