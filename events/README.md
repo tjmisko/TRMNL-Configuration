@@ -131,17 +131,32 @@ and exits 0. That's it — the aggregator discovers it automatically.
   `events/sources/<name>` (see `ics/`, mirroring `BART/`). Add its build step to
   `setup` and its output path to `.gitignore`.
 
-### Cal Sailing Club open/close (`csc`)
+### Cal Sailing Club lesson window (`csc`)
 
-`events/csc/` (Go, stdlib only) scrapes the club's published open/close schedule
-(`csc-openclose-times?view=month`) and emits a single timed event titled
-**"Cal Sailing Club @ Berkeley Marina"** for `$EVENTS_TODAY` (start = open, end =
-close). The page is server-rendered; rows are parsed by their NOAA `bdate`, and
-12-hour times (incl. the literal `Noon`) are converted to 24-hour. A closed day,
-a missing date, or any error yields `[]`. A successful fetch is cached to
-`events/sources/.csc-cache.json` (the whole visible month) and reused when the
-site is unreachable, so the schedule keeps rendering through an outage.
-Overridable via `$CSC_URL` and `$CSC_CACHE_FILE`.
+`events/csc/` (Go, stdlib only) emits a single event titled
+**"Cal Sailing Club @ Berkeley Marina"** for `$EVENTS_TODAY` showing **when you can
+actually take a Beginning Sailing Lesson today** — the *intersection* of two
+inputs:
+
+1. **Live club hours.** Scrapes the published open/close schedule
+   (`csc-openclose-times?view=month`, server-rendered). Rows are parsed by their
+   NOAA `bdate`, and 12-hour times (incl. the literal `Noon`) are converted to
+   24-hour. Open AND closed days are recorded so "club shut" is distinct from
+   "scrape failed". A successful fetch caches the whole visible month to
+   `events/sources/.csc-cache.json` and is reused when the site is unreachable.
+
+2. **Lesson windows** from **`events/csc-lessons.conf`** (gitignored; `setup`
+   seeds it from `events/csc-lessons.conf.example`). One line per weekday:
+   `<weekday> <start> <end> [<dst_start> <dst_end>]` (24-hour). The optional DST
+   pair applies while Daylight Saving Time is in effect (Pacific zone, via
+   `time.IsDST`). A weekday with no entry has no lessons.
+
+The shown time is `[max(open, lesson_start), min(close, lesson_end)]` per window.
+If tides push the club open past a window (e.g. a Saturday opening at 1:30 PM vs a
+10 AM–1 PM lesson), that day is suppressed. A non-lesson day, a closed club, an
+empty overlap, or any error yields `[]`. If the lessons config is missing, it
+degrades to showing the raw club hours. Overridable via `$CSC_URL`,
+`$CSC_CACHE_FILE`, `$CSC_LESSONS_FILE`.
 
 Read any per-source config from the environment; the aggregator exports
 `NOTES_DIRECTORY`, `NOTES_EVENTS_SUBDIR`, `LUMA_ICS_URL`, `EVENTS_FEEDS_FILE`,

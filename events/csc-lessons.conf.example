@@ -1,0 +1,20 @@
+# Beginning Sailing Lesson windows, by weekday, for the Cal Sailing Club event.
+#
+# The dashboard shows the OVERLAP of these hours with the club's actual
+# open/close times (live-scraped). A weekday with no entry here = no lessons =
+# no event. If tides make the club open late, past a window, that day's event is
+# suppressed automatically (e.g. a Saturday where the club opens at 1:30 PM).
+#
+# Format (whitespace-separated, 24-hour HH:MM):
+#   <weekday> <start> <end> [<dst_start> <dst_end>]
+#
+# weekday: full or 3-letter, case-insensitive (Mon, Monday, ...).
+# The optional dst_start/dst_end replace start/end while Daylight Saving Time is
+# in effect (Pacific zone). '#' comments and blank lines are ignored. Multiple
+# lines for the same weekday are allowed (each becomes its own window).
+#
+# Cal Sailing beginning lessons: Mon & Thu afternoons (1-4 PM; 1-5 PM during
+# DST), and Sat mornings (10 AM-1 PM).
+Monday    13:00 16:00  13:00 17:00
+Thursday  13:00 16:00  13:00 17:00
+Saturday  10:00 13:00

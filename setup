@@ -80,6 +80,13 @@ else
   echo "events/ignore.conf already exists, skipping"
 fi
 
+if [[ ! -f events/csc-lessons.conf ]]; then
+  cp events/csc-lessons.conf.example events/csc-lessons.conf
+  echo "events/csc-lessons.conf created — set your Cal Sailing lesson windows by weekday"
+else
+  echo "events/csc-lessons.conf already exists, skipping"
+fi
+
 # ── 4. Ensure scripts are executable ────────────────────────────────
 chmod +x update birthday/fetch tasks/fetch weather/fetch checklists/fetch \
   events/fetch events/sources/recurring
