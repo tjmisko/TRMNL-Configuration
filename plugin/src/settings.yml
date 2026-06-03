@@ -7,7 +7,7 @@ polling_verb: get
 framework_version: 2.3.7
 serverless_language: ''
 polling_url: https://retend.app/trmnl.json
-polling_headers: content-type=application/json
+polling_headers: content-type=application/json&x-plugin-token=7a6d84c0b645fcca0fcf636797f9259810befb3ddfebfda5aafa7ca1b0413ec4
 polling_body: ''
 id: 243914
 name: TRMNL Smartscreen
