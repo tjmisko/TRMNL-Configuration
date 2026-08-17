@@ -137,6 +137,19 @@
             </div>
           </div>
           {% endif %}
+          {% if weather.uv %}
+          <div style="padding: 3px 0; border-bottom: 1px dashed #ccc;">
+            <div style="display: flex; justify-content: space-between; gap: 16px;">
+              <span style="min-width: 110px;">UV Index</span>
+              <span>{{ weather.uv.max }} {{ weather.uv.band }}</span>
+            </div>
+            {% if weather.uv.max >= 6 and weather.uv.peak %}
+            <div style="font-size: 12px; font-weight: normal; padding-left: 8px;">
+              Peak {{ weather.uv.peak }}
+            </div>
+            {% endif %}
+          </div>
+          {% endif %}
         </div>
       </div>
       <div>

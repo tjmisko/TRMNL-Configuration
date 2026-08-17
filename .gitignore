@@ -1,4 +1,5 @@
 trmnl.json
+plugin/_build/
 .worktrees/
 .env
 BART/bart

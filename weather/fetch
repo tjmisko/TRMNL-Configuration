@@ -129,15 +129,64 @@ else
   BERKELEY_MARINA="null"
 fi
 
+# ── UV index ─────────────────────────────────────────────────────────
+# api.weather.gov has no UV product, so this one comes from Open-Meteo (free,
+# keyless). UV varies negligibly across the ~15 miles separating the three rows
+# above, so a single Bay Area figure is reported rather than three near-identical
+# ones; it is sampled at the Marina, where the sun exposure actually matters.
+# uv_index_max is cloud-adjusted, so an overcast day reads lower than the
+# clear-sky maximum. Any failure yields null and the row disappears.
+UV_LATITUDE="${UV_LATITUDE:-37.865}"
+UV_LONGITUDE="${UV_LONGITUDE:--122.315}"
+UV_TZ="${WEATHER_TZ:-America/Los_Angeles}"
+
+UV_RAW=$(curl -sf -G -H "User-Agent: $UA" "https://api.open-meteo.com/v1/forecast" \
+  --data-urlencode "latitude=$UV_LATITUDE" \
+  --data-urlencode "longitude=$UV_LONGITUDE" \
+  --data-urlencode "timezone=$UV_TZ" \
+  --data "daily=uv_index_max" \
+  --data "hourly=uv_index" \
+  --data "forecast_days=1")
+UV_OK=$?
+
+if [ $UV_OK -eq 0 ] && [ -n "$UV_RAW" ]; then
+  UV=$(printf '%s' "$UV_RAW" | jq '
+    # WHO exposure bands, applied to the rounded index so the number and the
+    # words never disagree (7.6 shows as "8 Very High", not "8 High").
+    def band:
+      if   . >= 11 then "Extreme"
+      elif . >= 8  then "Very High"
+      elif . >= 6  then "High"
+      elif . >= 3  then "Moderate"
+      else "Low" end;
+    (.daily.uv_index_max[0] // null) as $daily_max |
+    ([.hourly.time, .hourly.uv_index] | transpose
+      | map(select(.[1] != null))
+      | max_by(.[1])) as $peak_hour |
+    if $daily_max == null then null else
+      ($daily_max | round) as $rounded |
+      {
+        "max":  $rounded,
+        "band": ($rounded | band),
+        "peak": (if $peak_hour == null then null
+                 else ($peak_hour[0] | split("T")[1][0:5]) end)
+      }
+    end') || UV="null"
+else
+  UV="null"
+fi
+
 jq -n \
   --argjson sf_forecast "$SF_FORECAST" \
   --argjson oak_forecast "$OAK_FORECAST" \
   --argjson sf_alerts "${SF_ALERTS:-[]}" \
   --argjson oak_alerts "${OAK_ALERTS:-[]}" \
-  --argjson berkeley_marina "${BERKELEY_MARINA:-null}" '
+  --argjson berkeley_marina "${BERKELEY_MARINA:-null}" \
+  --argjson uv "${UV:-null}" '
   {
     sf: (if $sf_forecast == null then null else ($sf_forecast + {alerts: $sf_alerts}) end),
     oakland: (if $oak_forecast == null then null else ($oak_forecast + {alerts: $oak_alerts}) end),
-    berkeley_marina: $berkeley_marina
+    berkeley_marina: $berkeley_marina,
+    uv: $uv
   }
 '
