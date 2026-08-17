@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
-# Events source adapter: recurring weekly events from the Notes vault.
+# Events source adapter: recurring weekly and monthly events from the Notes vault.
 #
 # Scans Markdown notes anywhere under $NOTES_DIRECTORY whose YAML frontmatter is
 # tagged with BOTH `event` and `recurring`, and emits the ones whose `weekday`
-# matches *today* as a JSON array of normalized event objects (schema in
-# events/README.md).
+# (and optional `week`) match *today* as a JSON array of normalized event
+# objects (schema in events/README.md).
 #
 # Expected frontmatter (first --- block at the top of the file):
 #   ---
 #   start: 20:00          # 24-hour local time (omit for an all-day event)
 #   end:   23:30          # optional
 #   weekday: Monday       # full or 3-letter; also accepts a CSV list (Mon, Thu)
+#   week: 1, 3            # optional; nth Monday of the month. Omit = every week.
 #   message: Bring ID     # optional; rendered as an indented sub-line
 #   tags:
 #     - event
@@ -18,24 +19,88 @@
 #   ---
 # Title defaults to the note's filename (override with a `title:` field).
 #
+# `week` counts occurrences of the note's `weekday` within the month, matching
+# the ordinal BYDAY semantics of RRULE (`2SA` = second Saturday), so the same
+# event reads the same whether it arrives from a note or from an .ics feed.
+# Accepted tokens: 1..5, 1st..5th, first..fifth, and last (= -1, the final such
+# weekday of the month, which is the 4th or 5th depending on the month).
+#
 # Overlapping/conflicting events are intentionally kept. Emits [] if the notes
 # directory is unset or missing.
 # >/dev/null guards against a set CDPATH making `cd` echo the path (which would
 # otherwise be captured into SCRIPT_DIR and double it).
 SCRIPT_DIR="$(cd "$(dirname "$0")" >/dev/null 2>&1 && pwd)"
+
+# events/fetch exports the config it already resolved; .env is only the fallback
+# for running this adapter on its own. Sourcing .env would clobber those exports
+# with plain assignments, so hold the caller's values across the source and let
+# them win — that also lets the tests aim the adapter at a scratch vault.
+CALLER_NOTES_DIRECTORY="${NOTES_DIRECTORY:-}"
+CALLER_EVENTS_TZ="${EVENTS_TZ:-}"
 source "$SCRIPT_DIR/../../.env" 2>/dev/null
 
-EVENTS_TZ="${EVENTS_TZ:-America/Los_Angeles}"
+EVENTS_TZ="${CALLER_EVENTS_TZ:-${EVENTS_TZ:-America/Los_Angeles}}"
 TODAY="${EVENTS_TODAY:-$(TZ="$EVENTS_TZ" date +%Y-%m-%d)}"
-ROOT="${NOTES_DIRECTORY:-}"
+ROOT="${CALLER_NOTES_DIRECTORY:-${NOTES_DIRECTORY:-}}"
 
 if [[ -z "$ROOT" || ! -d "$ROOT" ]]; then
   echo '[]'
   exit 0
 fi
 
-TODAY_FULL=$(TZ="$EVENTS_TZ" date +%A | tr '[:upper:]' '[:lower:]')
+# Everything below is derived from $TODAY (not from the wall clock) so that a
+# caller-supplied $EVENTS_TODAY reschedules the whole adapter coherently.
+TODAY_FULL=$(TZ="$EVENTS_TZ" date -d "$TODAY" +%A 2>/dev/null | tr '[:upper:]' '[:lower:]')
 TODAY_ABBR=${TODAY_FULL:0:3}
+
+# An unparseable $EVENTS_TODAY would leave the weekday empty, and an empty
+# weekday matches every note. Bail out rather than emit the whole vault.
+if [[ -z "$TODAY_FULL" ]]; then
+  printf 'events/sources/recurring: unparseable date %s\n' "$TODAY" >&2
+  echo '[]'
+  exit 0
+fi
+
+# Which occurrence of this weekday within the month today is: day 1-7 → 1st,
+# 8-14 → 2nd, and so on. `last` is true when no further same-weekday remains.
+TODAY_DAY_OF_MONTH=$(TZ="$EVENTS_TZ" date -d "$TODAY" +%-d)
+TODAY_DAYS_IN_MONTH=$(TZ="$EVENTS_TZ" \
+  date -d "$(TZ="$EVENTS_TZ" date -d "$TODAY" +%Y-%m-01) +1 month -1 day" +%-d)
+TODAY_WEEK_ORDINAL=$(( (TODAY_DAY_OF_MONTH - 1) / 7 + 1 ))
+TODAY_IS_LAST_WEEKDAY_OF_MONTH=$(( TODAY_DAY_OF_MONTH + 7 > TODAY_DAYS_IN_MONTH ))
+
+# True when a note's `week` spec covers today. An empty spec means "every week"
+# (the original behavior). A spec whose tokens are all unrecognized matches
+# nothing — a typo hides the event rather than showing it on every wrong week.
+week_matches() {
+  local spec token ordinal recognized_any=0
+  local -a tokens
+  spec=$(printf '%s' "$1" | tr ',;' '  ' | tr '[:upper:]' '[:lower:]')
+  [[ -z "${spec// /}" ]] && return 0
+  read -ra tokens <<<"$spec"   # read, not word-splitting: a stray `*` must not glob
+
+  for token in "${tokens[@]}"; do
+    case "$token" in
+      1|1st|first)  ordinal=1 ;;
+      2|2nd|second) ordinal=2 ;;
+      3|3rd|third)  ordinal=3 ;;
+      4|4th|fourth) ordinal=4 ;;
+      5|5th|fifth)  ordinal=5 ;;
+      -1|last)
+        recognized_any=1
+        (( TODAY_IS_LAST_WEEKDAY_OF_MONTH )) && return 0
+        continue
+        ;;
+      *) continue ;;
+    esac
+    recognized_any=1
+    (( ordinal == TODAY_WEEK_ORDINAL )) && return 0
+  done
+
+  (( recognized_any )) && return 1
+  printf 'events/sources/recurring: %s: unrecognized week: %s\n' "$2" "$1" >&2
+  return 1
+}
 
 # Extract the YAML frontmatter block (first --- ... --- at the top), CR-stripped.
 frontmatter() {
@@ -72,7 +137,7 @@ fm_tags() {
 }
 
 emit_one() {
-  local file="$1" fm tags days start end title message
+  local file="$1" fm tags days weeks start end title message
   fm=$(frontmatter "$file")
   [[ -z "$fm" ]] && return
 
@@ -85,6 +150,10 @@ emit_one() {
   days=$(printf '%s %s' "$(fm_get "$fm" weekday)" "$(fm_get "$fm" weekdays)" \
     | tr '[:upper:]' '[:lower:]')
   echo "$days" | grep -qE "(^|[^a-z])($TODAY_FULL|$TODAY_ABBR)([^a-z]|$)" || return
+
+  # ...and, for monthly series, only on the listed occurrence(s) of that weekday.
+  weeks=$(printf '%s %s' "$(fm_get "$fm" week)" "$(fm_get "$fm" weeks)")
+  week_matches "$weeks" "$(basename "$file")" || return
 
   start=$(fm_get "$fm" start)
   end=$(fm_get "$fm" end)

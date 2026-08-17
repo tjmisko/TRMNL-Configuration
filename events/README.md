@@ -11,7 +11,7 @@ events/fetch (aggregator)         │  runs every executable in sources/,
                                   │  merges, filters to today, sorts
         ┌─────────────────────────┴─────────────────────────┐
 sources/recurring (bash+jq)                       sources/ics (Go binary)
-   Notes repo weekly events                          N .ics feeds (Luma, Google…)
+   Notes repo weekly/monthly events                  N .ics feeds (Luma, Google…)
    $NOTES_DIRECTORY                                  events/feeds.conf
 ```
 
@@ -105,6 +105,7 @@ event when its frontmatter is tagged with **both** `event` and `recurring`:
 start: 18:00            # 24-hour local time (omit for an all-day event)
 end:   19:30            # optional
 weekday: Tuesday        # full or 3-letter; also accepts a CSV list (Mon, Thu)
+week: 2                 # optional; 2nd Tuesday of the month. Omit = every week.
 message: Bring your copy # optional; rendered as an indented sub-line
 title: Book Club        # optional; defaults to the note's filename
 tags:
@@ -118,6 +119,35 @@ The note is shown only on days matching `weekday`. Weekday matching is
 case-insensitive and accepts full (`Monday`) or 3-letter (`Mon`) names; multiple
 days via `weekday: Mon, Thu`. `tags` may be a YAML list (as above), an inline
 `[event, recurring]` array, or a CSV. The title defaults to the filename.
+
+#### Monthly series (`week`)
+
+Add `week` to narrow a note from every week to specific occurrences of its
+`weekday` within the month — "second Saturday of the month" and friends:
+
+```markdown
+weekday: Saturday
+week: 1, 3              # 1st and 3rd Saturday
+```
+
+`week` counts occurrences of that weekday, so `week: 2` is the *second Saturday*
+(days 8–14), not "the Saturday of the second calendar week". That matches the
+ordinal `BYDAY` semantics of RRULE (`2SA`), so the same series reads the same
+whether it comes from a note or from an `.ics` feed.
+
+Accepted tokens, comma- or space-separated, case-insensitive: `1`–`5`,
+`1st`–`5th`, `first`–`fifth`, and `last` (or `-1`) for the final such weekday of
+the month — which is the 4th in a short month and the 5th in a long one. A note
+whose `week` is entirely unrecognized shows on **no** day and warns on stderr, so
+a typo hides the event rather than firing it on the wrong weeks. `weeks:` works
+as an alias, mirroring `weekday:`/`weekdays:`.
+
+Notes ready to copy into the vault live in **`events/vault-notes/`**, which is
+also the fixture directory for `events/recurring_test.sh` (`./events/recurring_test.sh`
+asserts the exact set of titles emitted on ~20 dates). The tests drive the
+adapter through `$EVENTS_TODAY`, which now also determines the weekday and the
+week-of-month — a caller-supplied `NOTES_DIRECTORY`/`EVENTS_TZ`/`EVENTS_TODAY`
+takes precedence over `.env`.
 
 ## Adding a new source
 
