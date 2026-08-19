@@ -1,11 +1,20 @@
+// Command bart reports the next few 19th St Oakland → Montgomery St trains as
+// JSON on stdout.
+//
+// It prints an empty array only when BART genuinely has no qualifying trains.
+// Every failure mode — unusable static schedule, unreachable realtime feed,
+// static data too old to resolve realtime trips — writes a diagnostic to
+// stderr, prints nothing to stdout, and exits non-zero, so callers can tell
+// "no trains" apart from "could not tell".
 package main
 
 import (
 	"encoding/csv"
 	"encoding/json"
+	"errors"
+	"flag"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,35 +26,116 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func baseDir() string {
-	exePath, err := os.Executable()
-	if err != nil {
-		log.Fatalf("cannot get executable path: %v", err)
-	}
-	return filepath.Dir(exePath)
-}
+// Exit codes. Callers use these to decide whether a retry could help;
+// BART/fetch refreshes the static schedule on exitStaticData and exitStaleData.
+const (
+	exitOK           = 0
+	exitInternal     = 1
+	exitStaticData   = 2 // static GTFS is missing, unreadable, or empty
+	exitRealtimeFeed = 3 // realtime feed is unreachable or unparseable
+	exitStaleData    = 4 // static and realtime disagree; static needs a refresh
+)
 
-const GTFSRTTripUpdatesURL = "http://api.bart.gov/gtfsrt/tripupdate.aspx"
+const (
+	defaultFeedURL = "https://api.bart.gov/gtfsrt/tripupdate.aspx"
 
-var TripsTXT = filepath.Join(baseDir(), "bart_gtfs", "trips.txt")
+	// Realtime fetches are retried; BART's endpoint is occasionally flaky and a
+	// transient failure should not read as "no trains".
+	fetchAttempts = 3
+	fetchTimeout  = 10 * time.Second
+	fetchBackoff  = 2 * time.Second
+
+	// A feed whose header timestamp is older than this is served but not being
+	// updated. Warned about rather than fatal: the times may still be usable.
+	maxFeedAge = 15 * time.Minute
+
+	// Below this share of realtime trips resolving against the static schedule,
+	// the static data is suspect. Zero matches is treated as outright stale.
+	minMatchRate = 0.5
+
+	// Skip trains leaving too soon to walk to the platform for.
+	departureLeadTime = 5 * time.Minute
+
+	tripsWanted = 5
+)
 
 var (
-	OriginStopIDs = map[string]struct{}{
-		"K20-1": {}, "K20-2": {}, "K20-3": {}, // 19th St Oakland platforms
+	// 19th St Oakland platforms.
+	originStopIDs = map[string]struct{}{
+		"K20-1": {}, "K20-2": {}, "K20-3": {},
 	}
-	DestStopIDs = map[string]struct{}{
-		"M20-1": {}, "M20-2": {}, // Montgomery St platforms
+	// Montgomery St platforms.
+	destStopIDs = map[string]struct{}{
+		"M20-1": {}, "M20-2": {},
 	}
-	AllowedRouteIDs = map[string]struct{}{
-		"1": {}, "7": {}, // Yellow-S / Red-S
+	// Yellow-S and Red-S: the lines that serve this pair in this direction.
+	allowedRouteIDs = map[string]struct{}{
+		"1": {}, "7": {},
 	}
 )
 
-func fmtHHMM(epoch int64) string {
-	return time.Unix(epoch, 0).Local().Format("15:04")
+var verbose bool
+
+func logf(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, "bart: "+format+"\n", args...)
 }
 
-func loadTripToRoute(path string) (map[string]string, error) {
+func debugf(format string, args ...any) {
+	if verbose {
+		logf(format, args...)
+	}
+}
+
+// config holds the program's external inputs. The environment overrides exist
+// so the shell wrapper and tests can point at fixtures without a rebuild.
+type config struct {
+	tripsPath string
+	feedURL   string
+	now       func() time.Time
+	// backoff between realtime fetch attempts; tests set it to zero.
+	backoff time.Duration
+}
+
+func configFromEnv() config {
+	return config{
+		tripsPath: filepath.Join(gtfsDir(), "trips.txt"),
+		feedURL:   envOr("BART_FEED_URL", defaultFeedURL),
+		now:       time.Now,
+		backoff:   fetchBackoff,
+	}
+}
+
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+func gtfsDir() string {
+	if dir := os.Getenv("BART_GTFS_DIR"); dir != "" {
+		return dir
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		// Fall back to the working directory rather than dying; the caller gets
+		// a clear exitStaticData if the guess is wrong.
+		return "bart_gtfs"
+	}
+	return filepath.Join(filepath.Dir(exe), "bart_gtfs")
+}
+
+// schedule is the static GTFS view this program needs.
+type schedule struct {
+	// routeByTrip covers only the routes we report on, and drives selection.
+	routeByTrip map[string]string
+	// knownTrips covers every trip in the feed regardless of route. It exists
+	// to measure how well the static data resolves realtime trips: scoring
+	// against routeByTrip alone would look like a miss for every other line.
+	knownTrips map[string]struct{}
+}
+
+func loadSchedule(path string) (*schedule, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -57,10 +147,10 @@ func loadTripToRoute(path string) (map[string]string, error) {
 
 	header, err := r.Read()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("reading header: %w", err)
 	}
 
-	var routeIdx, tripIdx int = -1, -1
+	routeIdx, tripIdx := -1, -1
 	for i, h := range header {
 		switch strings.TrimSpace(h) {
 		case "route_id":
@@ -69,12 +159,14 @@ func loadTripToRoute(path string) (map[string]string, error) {
 			tripIdx = i
 		}
 	}
-
 	if routeIdx == -1 || tripIdx == -1 {
-		return nil, fmt.Errorf("route_id or trip_id column missing")
+		return nil, errors.New("trips.txt has no route_id/trip_id columns")
 	}
 
-	out := make(map[string]string, 4096)
+	s := &schedule{
+		routeByTrip: make(map[string]string, 512),
+		knownTrips:  make(map[string]struct{}, 4096),
+	}
 
 	for {
 		row, err := r.Read()
@@ -82,31 +174,64 @@ func loadTripToRoute(path string) (map[string]string, error) {
 			break
 		}
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("reading row: %w", err)
 		}
-
 		if routeIdx >= len(row) || tripIdx >= len(row) {
 			continue
 		}
 
-		rid := strings.TrimSpace(row[routeIdx])
-		tid := strings.TrimSpace(row[tripIdx])
-
-		if rid == "" || tid == "" {
+		routeID := strings.TrimSpace(row[routeIdx])
+		tripID := strings.TrimSpace(row[tripIdx])
+		if routeID == "" || tripID == "" {
 			continue
 		}
 
-		if _, ok := AllowedRouteIDs[rid]; ok {
-			out[tid] = rid
+		s.knownTrips[tripID] = struct{}{}
+		if _, ok := allowedRouteIDs[routeID]; ok {
+			s.routeByTrip[tripID] = routeID
 		}
 	}
 
-	return out, nil
+	if len(s.knownTrips) == 0 {
+		return nil, errors.New("trips.txt has no usable rows")
+	}
+	if len(s.routeByTrip) == 0 {
+		return nil, fmt.Errorf("trips.txt has no trips on routes %s", sortedKeys(allowedRouteIDs))
+	}
+
+	return s, nil
 }
 
-func fetchFeed(url string) (*gtfs.FeedMessage, error) {
-	client := &http.Client{Timeout: 10 * time.Second}
+func sortedKeys(m map[string]struct{}) string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return strings.Join(keys, ", ")
+}
 
+func fetchFeed(url string, backoff time.Duration) (*gtfs.FeedMessage, error) {
+	client := &http.Client{Timeout: fetchTimeout}
+
+	var lastErr error
+	for attempt := 1; attempt <= fetchAttempts; attempt++ {
+		if attempt > 1 && backoff > 0 {
+			time.Sleep(time.Duration(attempt-1) * backoff)
+			debugf("realtime fetch retry %d/%d after: %v", attempt, fetchAttempts, lastErr)
+		}
+
+		feed, err := fetchFeedOnce(client, url)
+		if err == nil {
+			return feed, nil
+		}
+		lastErr = err
+	}
+
+	return nil, fmt.Errorf("after %d attempts: %w", fetchAttempts, lastErr)
+}
+
+func fetchFeedOnce(client *http.Client, url string) (*gtfs.FeedMessage, error) {
 	resp, err := client.Get(url)
 	if err != nil {
 		return nil, err
@@ -114,33 +239,67 @@ func fetchFeed(url string) (*gtfs.FeedMessage, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("http error: %d", resp.StatusCode)
+		return nil, fmt.Errorf("http %d", resp.StatusCode)
 	}
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
+	if len(data) == 0 {
+		return nil, errors.New("empty response body")
+	}
 
 	var feed gtfs.FeedMessage
 	if err := proto.Unmarshal(data, &feed); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parsing protobuf (%d bytes): %w", len(data), err)
 	}
 
 	return &feed, nil
 }
 
-type candidate struct {
-	Dep19th    int64
-	ArrMont    int64
-	TripID     string
-	OriginStop string
-	DestStop   string
+// coverage reports how many realtime trips the static schedule can resolve.
+// This is the authoritative staleness signal: BART regenerates every trip_id
+// when a new schedule takes effect, so stale static data resolves nothing.
+type coverage struct {
+	feedTrips int
+	matched   int
 }
 
-func nextNTripsWithTimes(feed *gtfs.FeedMessage, tripToRoute map[string]string, n int) []candidate {
-	now := time.Now().Unix()
-	threshold := now + 5*60 // discard anything departing <5 min from now
+func (c coverage) rate() float64 {
+	if c.feedTrips == 0 {
+		return 0
+	}
+	return float64(c.matched) / float64(c.feedTrips)
+}
+
+func measureCoverage(feed *gtfs.FeedMessage, s *schedule) coverage {
+	var c coverage
+	for _, ent := range feed.GetEntity() {
+		tu := ent.GetTripUpdate()
+		if tu == nil {
+			continue
+		}
+		tripID := strings.TrimSpace(tu.GetTrip().GetTripId())
+		if tripID == "" {
+			continue
+		}
+		c.feedTrips++
+		if _, ok := s.knownTrips[tripID]; ok {
+			c.matched++
+		}
+	}
+	return c
+}
+
+type candidate struct {
+	departOrigin int64
+	arriveDest   int64
+	tripID       string
+}
+
+func selectTrips(feed *gtfs.FeedMessage, s *schedule, n int, now time.Time) []candidate {
+	earliest := now.Add(departureLeadTime).Unix()
 
 	cands := make([]candidate, 0, 128)
 
@@ -154,89 +313,40 @@ func nextNTripsWithTimes(feed *gtfs.FeedMessage, tripToRoute map[string]string, 
 		if tripID == "" {
 			continue
 		}
-
-		if _, ok := tripToRoute[tripID]; !ok {
+		if _, ok := s.routeByTrip[tripID]; !ok {
 			continue
 		}
 
-		var dep19 *int64
-		var arrMont *int64
-		var originSID, destSID string
-
-		for _, stu := range tu.GetStopTimeUpdate() {
-			sid := strings.TrimSpace(stu.GetStopId())
-
-			if _, ok := OriginStopIDs[sid]; ok {
-				dep := stu.GetDeparture()
-				if dep == nil || dep.GetTime() == 0 {
-					continue
-				}
-				t := dep.GetTime()
-				if dep19 == nil || t < *dep19 {
-					tmp := t
-					dep19 = &tmp
-					originSID = sid
-				}
-				continue
-			}
-
-			if _, ok := DestStopIDs[sid]; ok {
-				// Prefer ARRIVAL at Montgomery; fall back to DEPARTURE if arrival missing.
-				var t int64
-				if arr := stu.GetArrival(); arr != nil && arr.GetTime() != 0 {
-					t = arr.GetTime()
-				} else if dep := stu.GetDeparture(); dep != nil && dep.GetTime() != 0 {
-					t = dep.GetTime()
-				} else {
-					continue
-				}
-
-				if arrMont == nil || t < *arrMont {
-					tmp := t
-					arrMont = &tmp
-					destSID = sid
-				}
-			}
+		depart, arrive, ok := originDestTimes(tu)
+		if !ok {
+			continue
 		}
-
-		if dep19 == nil || arrMont == nil {
+		// Already gone, or too soon to reach the platform.
+		if depart < earliest {
+			continue
+		}
+		// Wrong direction: this trip hits Montgomery before 19th St.
+		if depart >= arrive {
 			continue
 		}
 
-		// Discard already-gone trains AND trains leaving in under 5 minutes
-		if *dep19 < threshold {
-			continue
-		}
-
-		// Direction check by time ordering
-		if *dep19 >= *arrMont {
-			continue
-		}
-
-		cands = append(cands, candidate{
-			Dep19th:    *dep19,
-			ArrMont:    *arrMont,
-			TripID:     tripID,
-			OriginStop: originSID,
-			DestStop:   destSID,
-		})
+		cands = append(cands, candidate{departOrigin: depart, arriveDest: arrive, tripID: tripID})
 	}
 
 	sort.Slice(cands, func(i, j int) bool {
-		if cands[i].Dep19th == cands[j].Dep19th {
-			return cands[i].TripID < cands[j].TripID
+		if cands[i].departOrigin == cands[j].departOrigin {
+			return cands[i].tripID < cands[j].tripID
 		}
-		return cands[i].Dep19th < cands[j].Dep19th
+		return cands[i].departOrigin < cands[j].departOrigin
 	})
 
 	out := make([]candidate, 0, n)
-	seen := make(map[string]struct{})
-
+	seen := make(map[string]struct{}, n)
 	for _, c := range cands {
-		if _, ok := seen[c.TripID]; ok {
+		if _, dup := seen[c.tripID]; dup {
 			continue
 		}
-		seen[c.TripID] = struct{}{}
+		seen[c.tripID] = struct{}{}
 		out = append(out, c)
 		if len(out) >= n {
 			break
@@ -246,38 +356,116 @@ func nextNTripsWithTimes(feed *gtfs.FeedMessage, tripToRoute map[string]string, 
 	return out
 }
 
+// originDestTimes pulls the earliest origin departure and destination arrival
+// from a trip's stop time updates.
+func originDestTimes(tu *gtfs.TripUpdate) (depart, arrive int64, ok bool) {
+	var haveDepart, haveArrive bool
+
+	for _, stu := range tu.GetStopTimeUpdate() {
+		stopID := strings.TrimSpace(stu.GetStopId())
+
+		if _, isOrigin := originStopIDs[stopID]; isOrigin {
+			t, found := stopTime(stu.GetDeparture(), stu.GetArrival())
+			if !found {
+				continue
+			}
+			if !haveDepart || t < depart {
+				depart, haveDepart = t, true
+			}
+			continue
+		}
+
+		if _, isDest := destStopIDs[stopID]; isDest {
+			// Prefer arrival at the destination; fall back to departure.
+			t, found := stopTime(stu.GetArrival(), stu.GetDeparture())
+			if !found {
+				continue
+			}
+			if !haveArrive || t < arrive {
+				arrive, haveArrive = t, true
+			}
+		}
+	}
+
+	return depart, arrive, haveDepart && haveArrive
+}
+
+// stopTime returns the first of the given events carrying a usable time.
+func stopTime(events ...*gtfs.TripUpdate_StopTimeEvent) (int64, bool) {
+	for _, e := range events {
+		if e != nil && e.GetTime() != 0 {
+			return e.GetTime(), true
+		}
+	}
+	return 0, false
+}
+
 type tripJSON struct {
 	Depart string `json:"depart"`
 	Arrive string `json:"arrive"`
 }
 
+func hhmm(epoch int64) string {
+	return time.Unix(epoch, 0).Local().Format("15:04")
+}
+
 func main() {
-	tripToRoute, err := loadTripToRoute(TripsTXT)
+	flag.BoolVar(&verbose, "v", false, "log diagnostics to stderr")
+	flag.Parse()
+
+	os.Exit(run(configFromEnv(), os.Stdout))
+}
+
+func run(cfg config, stdout io.Writer) int {
+	sched, err := loadSchedule(cfg.tripsPath)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		fmt.Println("[]")
-		return
+		logf("static schedule unusable (%s): %v", cfg.tripsPath, err)
+		return exitStaticData
+	}
+	debugf("static schedule: %d trips, %d on reported routes", len(sched.knownTrips), len(sched.routeByTrip))
+
+	feed, err := fetchFeed(cfg.feedURL, cfg.backoff)
+	if err != nil {
+		logf("realtime feed unavailable: %v", err)
+		return exitRealtimeFeed
 	}
 
-	feed, err := fetchFeed(GTFSRTTripUpdatesURL)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		fmt.Println("[]")
-		return
-	}
-
-	trips := nextNTripsWithTimes(feed, tripToRoute, 5)
-
-	out := make([]tripJSON, len(trips))
-	for i, t := range trips {
-		out[i] = tripJSON{
-			Depart: fmtHHMM(t.Dep19th),
-			Arrive: fmtHHMM(t.ArrMont),
+	if ts := feed.GetHeader().GetTimestamp(); ts > 0 {
+		if age := cfg.now().Sub(time.Unix(int64(ts), 0)); age > maxFeedAge {
+			logf("realtime feed is %s old; times may be unreliable", age.Round(time.Minute))
 		}
 	}
 
-	enc := json.NewEncoder(os.Stdout)
-	if err := enc.Encode(out); err != nil {
-		fmt.Println("[]")
+	cov := measureCoverage(feed, sched)
+	debugf("coverage: %d/%d realtime trips resolved (%.0f%%)", cov.matched, cov.feedTrips, cov.rate()*100)
+
+	switch {
+	case cov.feedTrips == 0:
+		// Fetched and parsed cleanly, but BART reports no active trips. Treat
+		// as a real (if unusual) empty result rather than inventing an error.
+		logf("realtime feed contains no trip updates")
+	case cov.matched == 0:
+		logf("static schedule resolves none of %d realtime trips; it is out of date", cov.feedTrips)
+		return exitStaleData
+	case cov.rate() < minMatchRate:
+		logf("static schedule resolves only %d/%d realtime trips; a schedule change may be in progress",
+			cov.matched, cov.feedTrips)
 	}
+
+	trips := selectTrips(feed, sched, tripsWanted, cfg.now())
+	debugf("selected %d trips", len(trips))
+
+	out := make([]tripJSON, len(trips))
+	for i, t := range trips {
+		out[i] = tripJSON{Depart: hhmm(t.departOrigin), Arrive: hhmm(t.arriveDest)}
+	}
+
+	encoded, err := json.Marshal(out)
+	if err != nil {
+		logf("encoding result: %v", err)
+		return exitInternal
+	}
+	fmt.Fprintln(stdout, string(encoded))
+
+	return exitOK
 }
