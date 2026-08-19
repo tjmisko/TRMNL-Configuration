@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+CDPATH=
 cd "$SCRIPT_DIR"
 
 # ── 1. Check prerequisites ──────────────────────────────────────────
@@ -45,7 +46,7 @@ BART/refresh-gtfs --if-stale
 # ── 3a. Build BART binary ───────────────────────────────────────────
 if [[ ! -f BART/bart || BART/bart.go -nt BART/bart ]]; then
   echo "Building BART binary..."
-  (cd BART && go build -o bart .)
+  (cd -- BART && go build -o bart .)
   echo "BART built"
 else
   echo "BART binary is up to date"
@@ -54,7 +55,7 @@ fi
 # ── 3b. Build ICS events binary ─────────────────────────────────────
 if [[ ! -f events/sources/ics || events/ics/ics.go -nt events/sources/ics ]]; then
   echo "Building ICS events binary..."
-  (cd events/ics && go build -o ../sources/ics .)
+  (cd -- events/ics && go build -o ../sources/ics .)
   echo "ICS built"
 else
   echo "ICS binary is up to date"
@@ -63,7 +64,7 @@ fi
 # ── 3b2. Build CSC open/close events binary ─────────────────────────
 if [[ ! -f events/sources/csc || events/csc/csc.go -nt events/sources/csc ]]; then
   echo "Building CSC events binary..."
-  (cd events/csc && go build -o ../sources/csc .)
+  (cd -- events/csc && go build -o ../sources/csc .)
   echo "CSC built"
 else
   echo "CSC binary is up to date"

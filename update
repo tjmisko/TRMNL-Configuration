@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 source "$SCRIPT_DIR/.env" 2>/dev/null
 export NOTES_DIRECTORY PROJECT_DIRECTORY
 DATE_STRING=$(date +"%A, %d %B %Y")
