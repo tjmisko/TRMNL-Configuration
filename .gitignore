@@ -3,6 +3,9 @@ plugin/_build/
 .worktrees/
 .env
 BART/bart
+# Static GTFS schedule data. Expires on BART's schedule-change cadence, so
+# it is downloaded by BART/refresh-gtfs rather than committed.
+BART/bart_gtfs/
 events/sources/ics
 events/sources/csc
 events/sources/.csc-cache.json

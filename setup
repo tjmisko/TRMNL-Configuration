@@ -11,7 +11,7 @@ if ! command -v go &>/dev/null && [[ -x /usr/local/go/bin/go ]]; then
 fi
 
 missing=()
-for cmd in jq rg curl go; do
+for cmd in jq rg curl go unzip; do
   command -v "$cmd" &>/dev/null || missing+=("$cmd")
 done
 
@@ -38,7 +38,11 @@ else
   echo ".env already exists, skipping"
 fi
 
-# ── 3. Build BART binary ────────────────────────────────────────────
+# ── 3. Fetch BART static GTFS data ──────────────────────────────────
+echo "Checking BART static GTFS data..."
+BART/refresh-gtfs --if-stale
+
+# ── 3a. Build BART binary ───────────────────────────────────────────
 if [[ ! -f BART/bart || BART/bart.go -nt BART/bart ]]; then
   echo "Building BART binary..."
   (cd BART && go build -o bart .)
@@ -89,7 +93,7 @@ fi
 
 # ── 4. Ensure scripts are executable ────────────────────────────────
 chmod +x update birthday/fetch tasks/fetch weather/fetch checklists/fetch \
-  events/fetch events/sources/recurring
+  events/fetch events/sources/recurring BART/refresh-gtfs
 echo "Scripts marked executable"
 
 # ── 5. Smoke test ───────────────────────────────────────────────────

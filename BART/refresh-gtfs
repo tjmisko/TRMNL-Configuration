@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# Download BART's static GTFS feed into BART/bart_gtfs/.
+#
+# bart.go maps realtime trip_ids back to route_ids via bart_gtfs/trips.txt.
+# BART regenerates every trip_id when a new schedule takes effect, so stale
+# static data means zero realtime trips match and the feed silently reports
+# no trains. This keeps the static data current.
+#
+# Usage:
+#   refresh-gtfs              force a download
+#   refresh-gtfs --if-stale   download only when data is missing or expired
+set -euo pipefail
+
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+GTFS_DIR="$SCRIPT_DIR/bart_gtfs"
+GTFS_URL="https://www.bart.gov/dev/schedules/google_transit.zip"
+
+log() { printf 'refresh-gtfs: %s\n' "$1" >&2; }
+
+# Last service day covered by the static data, as YYYYMMDD, or empty if the
+# data is missing or unreadable. calendar.txt ships CRLF from upstream.
+latest_service_date() {
+  local calendar="$GTFS_DIR/calendar.txt"
+  [[ -f $calendar ]] || return 0
+  tr -d '\r' < "$calendar" | tail -n +2 | cut -d, -f10 |
+    grep -E '^[0-9]{8}$' | sort | tail -1 || true
+}
+
+is_stale() {
+  local latest
+  latest=$(latest_service_date)
+
+  if [[ -z $latest ]]; then
+    log "no usable bart_gtfs/calendar.txt"
+    return 0
+  fi
+
+  if [[ $(date +%Y%m%d) -gt $latest ]]; then
+    log "static data expired on $latest"
+    return 0
+  fi
+
+  return 1
+}
+
+download() {
+  local staging
+  staging=$(mktemp -d)
+  trap 'rm -rf "$staging"' RETURN
+
+  log "downloading $GTFS_URL"
+  if ! curl -fsSL --max-time 60 -o "$staging/gtfs.zip" "$GTFS_URL"; then
+    log "download failed"
+    return 1
+  fi
+
+  if ! unzip -oq "$staging/gtfs.zip" -d "$staging/gtfs"; then
+    log "archive is not a readable zip"
+    return 1
+  fi
+
+  # Refuse to swap in an archive that would break bart.go.
+  local trips="$staging/gtfs/trips.txt"
+  if [[ ! -s $trips ]]; then
+    log "archive has no trips.txt; keeping existing data"
+    return 1
+  fi
+  local header
+  header=$(head -1 "$trips" | tr -d '\r')
+  if [[ $header != *route_id* || $header != *trip_id* ]]; then
+    log "trips.txt is missing route_id/trip_id columns; keeping existing data"
+    return 1
+  fi
+
+  # Swap atomically so a mid-write failure can't leave a half-populated dir.
+  rm -rf "$GTFS_DIR.new"
+  mv "$staging/gtfs" "$GTFS_DIR.new"
+  rm -rf "$GTFS_DIR.old"
+  if [[ -d $GTFS_DIR ]]; then
+    mv "$GTFS_DIR" "$GTFS_DIR.old"
+  fi
+  mv "$GTFS_DIR.new" "$GTFS_DIR"
+  rm -rf "$GTFS_DIR.old"
+
+  log "updated; static data now runs through $(latest_service_date)"
+}
+
+if [[ ${1:-} == --if-stale ]]; then
+  is_stale || exit 0
+fi
+
+download
