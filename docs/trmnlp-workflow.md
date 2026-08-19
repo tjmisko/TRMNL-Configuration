@@ -7,7 +7,7 @@ Reference guide for editing, previewing, and deploying the GooseTRM TRMNL plugin
 ```
 fetch scripts ─┐
                ├─▶ update ─▶ trmnl.json ─▶ retend.app (hosted)
-BART binary ───┘                                │
+BART/fetch ────┘                                │
                                                 ▼
                                     TRMNL device polls endpoint
                                                 │
@@ -51,7 +51,8 @@ These variables are available in `full.liquid` via the polled `trmnl.json`:
 | `greetings` | string | `"Greetings from retend.app"` |
 | `is_sunday` | boolean | `true` when today is Sunday |
 | `is_last_day_of_month` | boolean | `true` on the last calendar day of the month |
-| `bart` | array | `[{"depart": "20:28", "arrive": "20:43"}, ...]` |
+| `bart` | array | `[{"depart": "20:28", "arrive": "20:43"}, ...]`; empty only when there are genuinely no trains |
+| `bart_status` | string | `"ok"`, or `"error"` when the data could not be fetched — render "Unavailable" rather than an empty list |
 | `weather.sf` | object | `{"high": 62, "low": 54, "rain": true, "rain_chance": 32, "alerts": []}` |
 | `weather.oakland` | object | Same shape as `weather.sf` |
 | `weather.berkeley_marina` | object | `{"high": 62, "low": 57, "wind": {"dir": "W", "speed_kt": 10, "gust_kt": null, "source": "observed"}}` |
@@ -129,6 +130,46 @@ Saves API key to `~/.config/trmnlp/config.yml`.
 Re-runs all fetch scripts and regenerates `trmnl.json`.
 
 ## Troubleshooting
+
+### BART shows "Unavailable" or no trains
+
+`BART/fetch` prints an empty array only when BART genuinely has no qualifying
+trains. Anything else exits non-zero and `update` sets `bart_status` to
+`error`, so run it directly to see why:
+
+```bash
+./BART/fetch            # orchestrates refresh + retry
+./BART/bart -v          # the binary alone, with diagnostics
+```
+
+`bart` exit codes:
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success. An empty array means there really are no trains. |
+| 2 | Static GTFS schedule missing, unreadable, or empty. |
+| 3 | Realtime feed unreachable or unparseable (already retried 3×). |
+| 4 | Static schedule resolves none of the realtime trips — it is out of date. |
+
+On 2 and 4, `BART/fetch` re-downloads the schedule and retries once.
+
+The static schedule lives in `BART/bart_gtfs/` and is **not** committed — BART
+reissues it every few months and regenerates every `trip_id` when it does, so
+a stale copy resolves nothing. `BART/refresh-gtfs` downloads it;
+`--if-stale` only hits the network when the data is missing or past its last
+service day in `calendar.txt`. Note that `feed_info.txt` carries a much more
+conservative `feed_end_date` than `calendar.txt` and is not a reliable
+staleness signal.
+
+Because BART can regenerate trip IDs while `calendar.txt` still looks current,
+the date check is only a cheap pre-filter. The authoritative signal is the
+share of realtime trips the static data resolves, which `bart` measures on
+every run (`-v` prints it).
+
+```bash
+./BART/refresh-gtfs     # force a download
+(cd BART && go test ./...)   # unit tests for parsing and selection
+```
 
 ### Port 4567 already allocated
 

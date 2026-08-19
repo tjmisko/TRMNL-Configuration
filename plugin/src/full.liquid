@@ -159,6 +159,7 @@
             <span>19th St</span>
             <span>Montgomery St</span>
           </div>
+          {% if bart_status == "ok" %}
           {% for train in bart %}
           <div style="display: flex; justify-content: space-between; align-items: center; padding: 3px 0; border-bottom: 1px dashed #ccc;">
             <span>{{ train.depart }}</span>
@@ -166,6 +167,12 @@
             <span>{{ train.arrive }}</span>
           </div>
           {% endfor %}
+          {% if bart.size == 0 %}
+          <div style="font-size: 12px; font-weight: normal; padding: 3px 0;">No trains</div>
+          {% endif %}
+          {% else %}
+          <div style="font-size: 12px; font-weight: normal; padding: 3px 0;">Unavailable</div>
+          {% endif %}
         </div>
       </div>
     </div>

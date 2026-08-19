@@ -25,11 +25,17 @@ WEATHER=$(validate_json "$("$SCRIPT_DIR"/weather/fetch)" '{}' weather)
 
 CHECKLISTS=$(validate_json "$("$SCRIPT_DIR"/checklists/fetch)" '{"sunday":[],"end_of_month":[]}' checklists)
 
-# bart resolves realtime trips against the static GTFS schedule, which BART
-# reissues periodically. Without this it silently reports no trains.
-"$SCRIPT_DIR"/BART/refresh-gtfs --if-stale ||
-  printf 'update: BART GTFS refresh failed; bart results may be stale\n' >&2
-BART=$(validate_json "$("$SCRIPT_DIR"/BART/bart)" '[]' bart)
+# BART/fetch exits non-zero rather than emitting an empty array when it cannot
+# tell whether there are trains, so an outage renders as "unavailable" instead
+# of masquerading as "no trains".
+if BART=$("$SCRIPT_DIR"/BART/fetch) &&
+  printf '%s' "$BART" | jq -e 'type == "array"' >/dev/null 2>&1; then
+  BART_STATUS=ok
+else
+  printf 'update: bart unavailable; rendering it as unavailable\n' >&2
+  BART='[]'
+  BART_STATUS=error
+fi
 
 EVENTS=$(validate_json "$("$SCRIPT_DIR"/events/fetch)" '[]' events)
 
@@ -44,7 +50,8 @@ jq -n \
   --argjson events "$EVENTS" \
   --argjson weather "$WEATHER" \
   --argjson checklists "$CHECKLISTS" \
-  --argjson bart "$BART" '
+  --argjson bart "$BART" \
+  --arg bart_status "$BART_STATUS" '
 {
   greetings: $greetings,
   date: $date,
@@ -57,6 +64,7 @@ jq -n \
   checklists: $checklists,
   weather: $weather,
   bart: $bart,
+  bart_status: $bart_status,
   rain_alert: {
     active: ($weather.sf.rain or $weather.oakland.rain),
     chance: ([$weather.sf.rain_chance, $weather.oakland.rain_chance] | max),
