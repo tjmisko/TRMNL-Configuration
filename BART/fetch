@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Emit the next few 19th St → Montgomery trains as a JSON array on stdout.
+#
+# Wraps the bart binary with the recovery it cannot do itself: when bart
+# reports that the static GTFS schedule is missing or too old to resolve the
+# realtime feed, refresh the schedule and try once more.
+#
+# Prints JSON and exits 0 only when the result is trustworthy — including a
+# genuine empty array when BART has no qualifying trains. Any other outcome
+# prints nothing on stdout and exits non-zero.
+set -uo pipefail
+
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+BART_BIN="$SCRIPT_DIR/bart"
+REFRESH="$SCRIPT_DIR/refresh-gtfs"
+
+# Mirrors the exit codes in bart.go.
+readonly EXIT_STATIC_DATA=2
+readonly EXIT_STALE_DATA=4
+
+log() { printf 'BART/fetch: %s\n' "$1" >&2; }
+
+if [[ ! -x $BART_BIN ]]; then
+  log "bart binary is missing; run ./setup"
+  exit 1
+fi
+
+# Cheap pre-check: reads calendar.txt, and only hits the network when the
+# schedule is absent or past its last service day.
+if [[ -x $REFRESH ]]; then
+  "$REFRESH" --if-stale || log "schedule pre-check failed; continuing with what is on disk"
+else
+  log "refresh-gtfs is missing; cannot recover from an outdated schedule"
+fi
+
+output=$("$BART_BIN")
+status=$?
+
+# bart rejected the static schedule. calendar.txt can still look current when
+# BART regenerates trip_ids mid-validity, so trust bart's verdict over the
+# date pre-check and force a download.
+if [[ $status -eq $EXIT_STATIC_DATA || $status -eq $EXIT_STALE_DATA ]]; then
+  if [[ ! -x $REFRESH ]]; then
+    log "schedule is unusable and refresh-gtfs is missing"
+    exit $status
+  fi
+
+  log "bart rejected the static schedule (exit $status); refreshing and retrying"
+  if ! "$REFRESH"; then
+    log "refresh failed; no BART data this run"
+    exit $status
+  fi
+
+  output=$("$BART_BIN")
+  status=$?
+fi
+
+if [[ $status -ne 0 ]]; then
+  log "no BART data this run (bart exit $status)"
+  exit $status
+fi
+
+printf '%s\n' "$output"

@@ -94,7 +94,7 @@ fi
 
 # ── 4. Ensure scripts are executable ────────────────────────────────
 chmod +x update birthday/fetch tasks/fetch weather/fetch checklists/fetch \
-  events/fetch events/sources/recurring BART/refresh-gtfs
+  events/fetch events/sources/recurring BART/refresh-gtfs BART/fetch
 echo "Scripts marked executable"
 
 # ── 5. Smoke test ───────────────────────────────────────────────────
