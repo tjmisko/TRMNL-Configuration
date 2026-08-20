@@ -1,8 +1,254 @@
-{% assign alert_count = rain_alert.alerts | size %}
-{% if rain_alert.active or alert_count > 0 %}
-{% if alert_count > 3 %}{% assign alert_font = "12px" %}{% elsif alert_count > 1 %}{% assign alert_font = "14px" %}{% else %}{% assign alert_font = "16px" %}{% endif %}
+{%- comment -%}
+═══ Panel metrics ═══════════════════════════════════════════════════════════
+Everything below is measured off the rendered 800×480 page, not guessed:
+
+  LAYOUT_H  410  what `.layout` gets once the title bar and screen gaps are out
+  RIGHT_W   252  the right column is pinned here. Its widest line — "Berkeley
+                 Marina  61°F/58°F" at 16px monospace — needs 247, and that
+                 column may not wrap, so the slack is deliberate; the column
+                 can still grow past 252 if a city name ever gets longer, and
+                 the left column, which can wrap, gives up the width.
+  LEFT_W    472  780 − 32 (screen padding) − 24 (column gap) − RIGHT_W
+  MONO      0.6  monospace advance in em. Exact, not rounded: 11 characters at
+                 8px measured 52.81px, and 11 × 8 × 0.6 = 52.8.
+  LINE      1.3  set explicitly on every row below so row heights stay
+                 predictable instead of riding on the font's `normal`
+  HEAD_H   1.2×  `.label` at its font size, line-height 1.2. It ships as
+                 `inline-flex`, which lands it on a line box 2px taller than
+                 itself, so the headings below are set back to `block` to make
+                 this exact. The size is body + 3, held between 12 and 16: on
+                 any ordinary day that is 16, exactly as before, but a heading
+                 that outweighs its own list by two to one is spending the
+                 column's last pixels on the least of what is written in it.
+  SECT_GAP   10  `.trmnl .column` already carries `gap: var(--gap)`, so the
+                 sections are spaced for us and this is a reading, not a choice
+  ROW_H       3  1px padding above and below each row, plus its 1px rule
+  BOX_W   0.8em  the checkbox, which is sized in ems so it stays in proportion
+                 to the line it sits on, plus the ROW_GAP after it
+═════════════════════════════════════════════════════════════════════════════
+{%- endcomment -%}
+{%- assign LAYOUT_H = 410 -%}
+{%- assign LEFT_W = 472 -%}
+{%- assign INDENT = 12 -%}
+{%- assign ROW_GAP = 8 -%}
+{%- assign ROW_H = 3 -%}
+{%- assign SECT_GAP = 10 -%}
+{%- assign GROUP_GAP = 4 -%}
+{%- assign NONE = '' | split: ',' -%}
+
+{%- comment -%}-- The alert banner sits above the columns and takes its height
+out of theirs, so the left column has to know how tall it got before it can
+choose a size. The banner is Inter, not monospace, so its lines cannot be
+counted the way the agenda's are; instead the alerts are packed by character
+count against a deliberately mean estimate of what fits — 0.52em average
+advance across the 738px the banner has — and given one spare line on top. A
+line too many costs the agenda a step of type; a line too few runs it off the
+bottom of the panel, so the estimate leans the way it leans on purpose. --{%- endcomment -%}
+{%- assign alert_items = rain_alert.alerts | size -%}
+{%- if rain_alert.active -%}{%- assign alert_items = alert_items | plus: 1 -%}{%- endif -%}
+{%- if alert_items > 3 -%}{%- assign alert_font = 12 -%}
+{%- elsif alert_items > 1 -%}{%- assign alert_font = 14 -%}
+{%- else -%}{%- assign alert_font = 16 -%}{%- endif -%}
+{%- assign alert_h = 0 -%}
+{%- if alert_items > 0 -%}
+  {%- assign alert_chars = 0 -%}
+  {%- if rain_alert.active -%}
+    {%- capture rain_text -%}{{ rain_alert.chance }}% chance of rain today in {{ rain_alert.city }}. Bring your umbrella!{%- endcapture -%}
+    {%- assign alert_chars = rain_text | size -%}
+  {%- endif -%}
+  {%- for alert in rain_alert.alerts -%}
+    {%- assign alert_chars = alert | size | plus: 2 | plus: alert_chars -%}
+  {%- endfor -%}
+  {%- assign alert_cpl = 738 | divided_by: alert_font | divided_by: 0.52 | floor -%}
+  {%- assign alert_rows = alert_chars | divided_by: alert_cpl | plus: 2 -%}
+  {%- assign alert_h = alert_font | times: 1.3 | ceil | times: alert_rows | plus: 20 -%}
+  {%- if alert_h > 82 -%}{%- assign alert_h = 82 -%}{%- endif -%}
+{%- endif -%}
+{%- assign budget = LAYOUT_H | minus: alert_h | minus: 4 -%}
+
+{%- comment -%}
+═══ Fitting the left column ═════════════════════════════════════════════════
+The panel is a fixed 800×480 with nowhere to scroll, so the type has to be
+sized to the day's contents rather than the other way round.
+
+The rule this replaces counted "visual rows" against one hard-coded character
+budget — 30 in a tagged section, 38 without — and mapped the count onto a font
+size. But that budget was calibrated at 14px and then applied at every size, so
+at 10px, where two-thirds again as many characters fit on a line, it went on
+counting wraps that no longer happened. The count stayed high, the font stayed
+small, and the estimate kept justifying itself: a column with 200px of empty
+space in it was being set at 8px.
+
+So this fits instead of estimating. Monospace advance is exactly 0.6em, which
+makes a line's character budget nothing more than the width left over after the
+tag and time columns, divided by 0.6 × size; titles are then broken on spaces
+the way the browser will break them. We walk the sizes down from 16px — level
+with the weather, which is as large as this column has any reason to be — and
+take the first one whose laid-out height actually fits. Wrapping to two lines
+at a size worth reading beats one line at a size that isn't.
+
+Order does not matter here, only the sum, so the plain lists are counted
+together in one pass ahead of the event sections rather than in reading order.
+═════════════════════════════════════════════════════════════════════════════
+{%- endcomment -%}
+{%- assign left_font = 8 -%}
+{%- assign SIZES = '16,15,14,13,12,11,10,9,8' | split: ',' -%}
+{%- for candidate in SIZES -%}
+  {%- assign F = candidate | times: 1 -%}
+  {%- assign CH = F | times: 0.6 -%}
+  {%- assign line_h = F | times: 1.3 -%}
+  {%- assign msg_h = F | times: 1.105 -%}
+  {%- assign head_font = F | plus: 3 -%}
+  {%- if head_font > 16 -%}{%- assign head_font = 16 -%}{%- endif -%}
+  {%- if head_font < 12 -%}{%- assign head_font = 12 -%}{%- endif -%}
+  {%- assign HEAD_H = head_font | times: 1.2 -%}
+  {%- assign body_h = 0 -%}
+  {%- assign section_no = 0 -%}
+
+  {%- comment -%}-- Birthdays, the two checklists and tasks are all the same
+  shape: a heading over a run of plain lines, the last three carrying a
+  checkbox. Walking them as one pass keeps the wrapping arithmetic in a single
+  place. --{%- endcomment -%}
+  {%- for pass in (1..4) -%}
+    {%- assign items = NONE -%}
+    {%- assign box_w = F | times: 0.8 | plus: ROW_GAP -%}
+    {%- case pass -%}
+    {%- when 1 -%}
+      {%- assign items = birthdays -%}
+      {%- assign box_w = 0 -%}
+    {%- when 2 -%}
+      {%- if is_last_day_of_month -%}{%- assign items = checklists.end_of_month -%}{%- endif -%}
+    {%- when 3 -%}
+      {%- if is_sunday -%}{%- assign items = checklists.sunday -%}{%- endif -%}
+    {%- when 4 -%}
+      {%- assign items = tasks -%}
+    {%- endcase -%}
+    {%- assign item_count = items | size -%}
+    {%- if item_count > 0 -%}
+      {%- assign body_h = body_h | plus: HEAD_H -%}
+      {%- if section_no > 0 -%}{%- assign body_h = body_h | plus: SECT_GAP -%}{%- endif -%}
+      {%- assign section_no = section_no | plus: 1 -%}
+      {%- assign cpl = LEFT_W | minus: INDENT | minus: box_w | divided_by: CH | floor -%}
+      {%- if cpl < 1 -%}{%- assign cpl = 1 -%}{%- endif -%}
+      {%- for item in items -%}
+        {%- comment -%}-- greedy wrap; see the note at the event copy below --{%- endcomment -%}
+        {%- assign lines = 1 -%}
+        {%- assign fill = 0 -%}
+        {%- assign words = item | split: ' ' -%}
+        {%- for word in words -%}
+          {%- assign word_len = word | size -%}
+          {%- if word_len > 0 -%}
+            {%- if fill > 0 -%}{%- assign need = fill | plus: 1 | plus: word_len -%}
+            {%- else -%}{%- assign need = word_len -%}{%- endif -%}
+            {%- if need <= cpl -%}
+              {%- assign fill = need -%}
+            {%- else -%}
+              {%- assign lines = lines | plus: 1 -%}
+              {%- if word_len > cpl -%}
+                {%- assign over = word_len | minus: 1 | divided_by: cpl -%}
+                {%- assign lines = lines | plus: over -%}
+                {%- assign fill = over | times: cpl -%}
+                {%- assign fill = word_len | minus: fill -%}
+              {%- else -%}
+                {%- assign fill = word_len -%}
+              {%- endif -%}
+            {%- endif -%}
+          {%- endif -%}
+        {%- endfor -%}
+        {%- assign body_h = lines | times: line_h | plus: ROW_H | plus: body_h -%}
+      {%- endfor -%}
+    {%- endif -%}
+  {%- endfor -%}
+
+  {%- for section in events -%}
+    {%- assign body_h = body_h | plus: HEAD_H -%}
+    {%- if section_no > 0 -%}{%- assign body_h = body_h | plus: SECT_GAP -%}{%- endif -%}
+    {%- assign section_no = section_no | plus: 1 -%}
+    {%- comment -%}-- The tag column is as wide as the longest tag in the
+    section and no wider, so it holds its alignment whatever the vocabulary in
+    tags.conf grows into. Tags are set at 0.85em: bold uppercase stays findable
+    a step down, and subordinating the category to the event name is what buys
+    the name its width back. --{%- endcomment -%}
+    {%- assign tag_ch = 0 -%}
+    {%- if section.tagged -%}
+      {%- for event in section.events -%}
+        {%- assign tag_len = event.tag | default: 'Other' | size -%}
+        {%- if tag_len > tag_ch -%}{%- assign tag_ch = tag_len -%}{%- endif -%}
+      {%- endfor -%}
+    {%- endif -%}
+    {%- assign tag_w = tag_ch | times: 0.51 | times: F | ceil -%}
+    {%- assign gutter = INDENT | plus: ROW_GAP -%}
+    {%- if section.tagged -%}{%- assign gutter = gutter | plus: ROW_GAP | plus: tag_w -%}{%- endif -%}
+    {%- assign prev_tag = '' -%}
+    {%- for event in section.events -%}
+      {%- if event.all_day -%}{%- assign time_ch = 7 -%}
+      {%- elsif event.end -%}{%- assign time_ch = 11 -%}
+      {%- elsif event.start -%}{%- assign time_ch = 5 -%}
+      {%- else -%}{%- assign time_ch = 0 -%}{%- endif -%}
+      {%- assign time_w = time_ch | times: CH | ceil -%}
+      {%- assign cpl = LEFT_W | minus: gutter | minus: time_w | divided_by: CH | floor -%}
+      {%- if cpl < 1 -%}{%- assign cpl = 1 -%}{%- endif -%}
+      {%- assign origin = '' -%}
+      {%- if section.tagged and event.tag == 'Other' -%}
+        {%- case event.source -%}
+        {%- when 'the-commons' -%}{%- assign origin = 'The Commons' -%}
+        {%- when 'rallysf' -%}{%- assign origin = 'RallySF' -%}
+        {%- endcase -%}
+      {%- endif -%}
+      {%- if origin == '' -%}
+        {%- assign headline = event.title -%}
+      {%- else -%}
+        {%- capture headline -%}{{ event.title }} @ {{ origin }}{%- endcapture -%}
+      {%- endif -%}
+      {%- comment -%}-- Greedy wrap: fill a line word by word and start a new
+      one when the next word will not fit, which is what the browser does. A
+      word longer than the whole line breaks mid-word, because the title span
+      carries `overflow-wrap: anywhere`. --{%- endcomment -%}
+      {%- assign lines = 1 -%}
+      {%- assign fill = 0 -%}
+      {%- assign words = headline | split: ' ' -%}
+      {%- for word in words -%}
+        {%- assign word_len = word | size -%}
+        {%- if word_len > 0 -%}
+          {%- if fill > 0 -%}{%- assign need = fill | plus: 1 | plus: word_len -%}
+          {%- else -%}{%- assign need = word_len -%}{%- endif -%}
+          {%- if need <= cpl -%}
+            {%- assign fill = need -%}
+          {%- else -%}
+            {%- assign lines = lines | plus: 1 -%}
+            {%- if word_len > cpl -%}
+              {%- assign over = word_len | minus: 1 | divided_by: cpl -%}
+              {%- assign lines = lines | plus: over -%}
+              {%- assign fill = over | times: cpl -%}
+              {%- assign fill = word_len | minus: fill -%}
+            {%- else -%}
+              {%- assign fill = word_len -%}
+            {%- endif -%}
+          {%- endif -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {%- assign body_h = lines | times: line_h | plus: ROW_H | plus: body_h -%}
+      {%- comment -%}-- A message is clipped to one line, so it always costs
+      exactly one. --{%- endcomment -%}
+      {%- if event.message and event.message != '' -%}
+        {%- assign body_h = body_h | plus: msg_h -%}
+      {%- endif -%}
+      {%- if section.tagged and forloop.first == false and event.tag != prev_tag -%}
+        {%- assign body_h = body_h | plus: GROUP_GAP -%}
+      {%- endif -%}
+      {%- assign prev_tag = event.tag -%}
+    {%- endfor -%}
+  {%- endfor -%}
+
+  {%- assign left_font = F -%}
+  {%- assign left_sections = section_no -%}
+  {%- assign left_fits = false -%}
+  {%- if body_h <= budget -%}{%- assign left_fits = true -%}{%- break -%}{%- endif -%}
+{%- endfor -%}
+
+{% if alert_items > 0 %}
 <div style="max-height: 20%; border: 1px solid black; border-radius: 8px; padding: 4px 12px; margin: 2px 8px 8px 8px; font-family: Inter, helvetica, arial, sans-serif;">
-  <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 12px; margin: 0; padding: 0; font-size: {{ alert_font }}; font-weight: bold;">
+  <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 12px; margin: 0; padding: 0; line-height: 1.3; font-size: {{ alert_font }}px; font-weight: bold;">
     {% if rain_alert.active %}
     <span>{{ rain_alert.chance }}% chance of rain today in {{ rain_alert.city }}. Bring your umbrella!</span>
     {% endif %}
@@ -13,55 +259,24 @@
 </div>
 {% endif %}
 
-{% comment %}-- Count visual rows for adaptive font sizing --{% endcomment %}
-{% assign left_rows = 0 %}
-{% assign birthday_count = birthdays | size %}
-{% if birthday_count != 0 %}{% assign left_rows = left_rows | plus: 1 | plus: birthday_count %}{% endif %}
-{% comment %}-- Each section costs a heading row; each event costs one row, plus one for a
-message, plus one more when its title wraps onto a second line. How many characters fit
-depends on the font we are about to choose from this very count, so this is deliberately
-an estimate rather than a second pass: ~30 characters is the budget at 14px in a tagged
-section, and ~38 in one without a tag gutter. Erring high is the safe direction — it only
-picks a font a step smaller than needed, whereas erring low runs the list off the bottom
-of the panel. --{% endcomment %}
-{% assign event_rows = 0 %}
-{% for section in events %}
-  {% assign event_rows = event_rows | plus: 1 %}
-  {% if section.tagged %}{% assign wrap_at = 30 %}{% else %}{% assign wrap_at = 38 %}{% endif %}
-  {% for e in section.events %}
-    {% assign event_rows = event_rows | plus: 1 %}
-    {% if e.message != blank %}{% assign event_rows = event_rows | plus: 1 %}{% endif %}
-    {% assign title_len = e.title | size %}
-    {% if section.tagged and e.tag == 'Other' and e.source == 'rallysf' %}{% assign title_len = title_len | plus: 10 %}{% endif %}
-    {% if title_len > wrap_at %}{% assign event_rows = event_rows | plus: 1 %}{% endif %}
-  {% endfor %}
-{% endfor %}
-{% assign left_rows = left_rows | plus: event_rows %}
-{% if is_last_day_of_month %}{% assign eom_count = checklists.end_of_month | size %}{% assign left_rows = left_rows | plus: 1 | plus: eom_count %}{% endif %}
-{% if is_sunday %}{% assign sun_count = checklists.sunday | size %}{% assign left_rows = left_rows | plus: 1 | plus: sun_count %}{% endif %}
-{% assign task_count = tasks | size %}
-{% if task_count != 0 %}{% assign left_rows = left_rows | plus: 1 | plus: task_count %}{% endif %}
-
-{% if rain_alert.active or alert_count > 0 %}
-  {% if left_rows > 18 %}{% assign left_font = "8px" %}{% elsif left_rows > 15 %}{% assign left_font = "10px" %}{% elsif left_rows > 12 %}{% assign left_font = "12px" %}{% elsif left_rows > 8 %}{% assign left_font = "14px" %}{% else %}{% assign left_font = "16px" %}{% endif %}
-{% else %}
-  {% if left_rows > 20 %}{% assign left_font = "8px" %}{% elsif left_rows > 17 %}{% assign left_font = "10px" %}{% elsif left_rows > 14 %}{% assign left_font = "12px" %}{% elsif left_rows > 10 %}{% assign left_font = "14px" %}{% else %}{% assign left_font = "16px" %}{% endif %}
-{% endif %}
-
 <div class="layout" style="flex: 1;">
-  <div class="columns" data-adjust-column-gaps="false" style="height: 100%; padding: 0 16px; gap: 32px;">
-    <div class="column" style="flex: 62; height: 100%; display: flex; flex-direction: column; justify-content: center; font-family: monospace; white-space: normal;">
-      {% if left_rows == 0 %}
+  <div class="columns" data-adjust-column-gaps="false" style="height: 100%; padding: 0 16px; gap: 24px;">
+    {%- comment -%}-- A day so full that it will not fit even at the smallest
+    size gets anchored to the top instead of centred, so what falls off the
+    panel is the tail of the list rather than a slice off each end. --{%- endcomment -%}
+    <div class="column" style="flex: 1 1 0; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: {% if left_fits %}center{% else %}flex-start{% endif %}; overflow: hidden; font-family: monospace; white-space: normal; font-size: {{ left_font }}px; line-height: 1.3;">
+      {% if left_sections == 0 %}
       <div style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 20px; font-weight: bold;">
         Nothing on the docket!
       </div>
       {% else %}
+      {% assign birthday_count = birthdays | size %}
       {% if birthday_count != 0 %}
       <div>
-        <div class="label" style="margin: 0; padding: 0; line-height: 1.2;">Birthdays</div>
-        <div style="padding-left: 16px;">
+        <div class="label" style="display: block; margin: 0; padding: 0; font-size: {{ head_font }}px; line-height: 1.2;">Birthdays</div>
+        <div style="padding-left: {{ INDENT }}px;">
           {% for birthday in birthdays %}
-          <div style="padding: 2px 0; border-bottom: 1px dashed #999; font-size: {{ left_font }}; font-weight: normal;">{{ birthday }}</div>
+          <div style="padding: 1px 0; border-bottom: 1px dashed #999; font-weight: normal; overflow-wrap: anywhere;">{{ birthday }}</div>
           {% endfor %}
         </div>
       </div>
@@ -70,12 +285,19 @@ of the panel. --{% endcomment %}
       already ordered, already non-empty, and already sorted within themselves. A section
       whose tag was declared `heading` in tags.conf carries its own heading and needs no
       tag on its rows; the rest share one "Events" section where the tag leads each row in
-      a fixed 8-character column, so the titles line up down the page. Monospace makes
-      `ch` an exact character width, so that column holds at every adaptive font size. --{% endcomment %}
+      a column sized to that section's longest tag, so the titles line up down the page. --{% endcomment %}
       {% for section in events %}
+      {% assign tag_ch = 0 %}
+      {% if section.tagged %}
+        {% for event in section.events %}
+        {% assign tag_len = event.tag | default: 'Other' | size %}
+        {% if tag_len > tag_ch %}{% assign tag_ch = tag_len %}{% endif %}
+        {% endfor %}
+      {% endif %}
+      {% assign tag_w = tag_ch | times: 0.51 | times: left_font | ceil %}
       <div>
-        <div class="label" style="margin: 0; padding: 0; line-height: 1.2;">{{ section.heading }}</div>
-        <div style="padding-left: 16px;">
+        <div class="label" style="display: block; margin: 0; padding: 0; font-size: {{ head_font }}px; line-height: 1.2;">{{ section.heading }}</div>
+        <div style="padding-left: {{ INDENT }}px;">
           {% assign prev_tag = '' %}
           {% for event in section.events %}
           {% comment %}-- Within a tagged section a run of the same tag gets a little air
@@ -83,14 +305,14 @@ of the panel. --{% endcomment %}
           The tag also already names where a Commons event came from, so the `@ origin`
           suffix is only worth its width on untagged (Other) events. --{% endcomment %}
           {% assign origin = '' %}{% if section.tagged and event.tag == 'Other' %}{% case event.source %}{% when 'the-commons' %}{% assign origin = 'The Commons' %}{% when 'rallysf' %}{% assign origin = 'RallySF' %}{% endcase %}{% endif %}
-          <div style="padding: 2px 0; border-bottom: 1px dashed #999; font-size: {{ left_font }}; font-weight: normal;{% if section.tagged %}{% unless forloop.first or event.tag == prev_tag %} margin-top: 5px;{% endunless %}{% endif %}">
-            <div style="display: flex; gap: 10px; align-items: baseline;">
-              {% if section.tagged %}<span style="flex-shrink: 0; min-width: 8ch; font-weight: bold; letter-spacing: 0.06em;">{{ event.tag | default: 'Other' | upcase }}</span>{% endif %}
-              <span style="flex: 1; min-width: 0; overflow-wrap: anywhere;">{{ event.title }}{% if origin != blank %} @ {{ origin }}{% endif %}</span>
-              <span style="flex-shrink: 0; text-align: right;">{% if event.all_day %}All day{% else %}{{ event.start }}{% if event.end %}&ndash;{{ event.end }}{% endif %}{% endif %}</span>
+          <div style="padding: 1px 0; border-bottom: 1px dashed #999; font-weight: normal;{% if section.tagged %}{% unless forloop.first or event.tag == prev_tag %} margin-top: {{ GROUP_GAP }}px;{% endunless %}{% endif %}">
+            <div style="display: flex; gap: {{ ROW_GAP }}px; align-items: baseline;">
+              {% if section.tagged %}<span style="flex: 0 0 {{ tag_w }}px; font-size: 0.85em; font-weight: bold;">{{ event.tag | default: 'Other' | upcase }}</span>{% endif %}
+              <span style="flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere;">{{ event.title }}{% if origin != '' %} @ {{ origin }}{% endif %}</span>
+              <span style="flex: 0 0 auto; white-space: nowrap; text-align: right;">{% if event.all_day %}All day{% else %}{{ event.start }}{% if event.end %}&ndash;{{ event.end }}{% endif %}{% endif %}</span>
             </div>
-            {% if event.message != blank %}
-            <div style="padding-left: {% if section.tagged %}calc(8ch + 10px){% else %}16px{% endif %}; font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ event.message }}</div>
+            {% if event.message and event.message != '' %}
+            <div style="padding-left: {% if section.tagged %}{{ tag_w | plus: ROW_GAP }}{% else %}{{ INDENT }}{% endif %}px; font-size: 0.85em; font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ event.message }}</div>
             {% endif %}
           </div>
           {% assign prev_tag = event.tag %}
@@ -99,39 +321,46 @@ of the panel. --{% endcomment %}
       </div>
       {% endfor %}
       {% if is_last_day_of_month %}
+      {% assign eom_count = checklists.end_of_month | size %}
+      {% if eom_count != 0 %}
       <div>
-        <div class="label" style="margin: 0; padding: 0; line-height: 1.2;">End of Month Checklist</div>
-        <div style="padding-left: 16px;">
+        <div class="label" style="display: block; margin: 0; padding: 0; font-size: {{ head_font }}px; line-height: 1.2;">End of Month Checklist</div>
+        <div style="padding-left: {{ INDENT }}px;">
           {% for item in checklists.end_of_month %}
-          <div style="display: flex; align-items: center; gap: 8px; padding: 2px 0; border-bottom: 1px dashed #999; font-size: {{ left_font }}; font-weight: normal;">
-            <span style="display: inline-block; width: 12px; height: 12px; border: 2px solid black; border-radius: 2px; flex-shrink: 0;"></span>
-            <span>{{ item }}</span>
+          <div style="display: flex; align-items: baseline; gap: {{ ROW_GAP }}px; padding: 1px 0; border-bottom: 1px dashed #999; font-weight: normal;">
+            <span style="display: inline-block; box-sizing: border-box; width: 0.8em; height: 0.8em; border: 0.13em solid black; border-radius: 0.13em; flex-shrink: 0; align-self: flex-start; margin-top: 0.3em;"></span>
+            <span style="flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere;">{{ item }}</span>
           </div>
           {% endfor %}
         </div>
       </div>
+      {% endif %}
       {% endif %}
       {% if is_sunday %}
+      {% assign sun_count = checklists.sunday | size %}
+      {% if sun_count != 0 %}
       <div>
-        <div class="label" style="margin: 0; padding: 0; line-height: 1.2;">Sunday Checklist</div>
-        <div style="padding-left: 16px;">
+        <div class="label" style="display: block; margin: 0; padding: 0; font-size: {{ head_font }}px; line-height: 1.2;">Sunday Checklist</div>
+        <div style="padding-left: {{ INDENT }}px;">
           {% for item in checklists.sunday %}
-          <div style="display: flex; align-items: center; gap: 8px; padding: 2px 0; border-bottom: 1px dashed #999; font-size: {{ left_font }}; font-weight: normal;">
-            <span style="display: inline-block; width: 12px; height: 12px; border: 2px solid black; border-radius: 2px; flex-shrink: 0;"></span>
-            <span>{{ item }}</span>
+          <div style="display: flex; align-items: baseline; gap: {{ ROW_GAP }}px; padding: 1px 0; border-bottom: 1px dashed #999; font-weight: normal;">
+            <span style="display: inline-block; box-sizing: border-box; width: 0.8em; height: 0.8em; border: 0.13em solid black; border-radius: 0.13em; flex-shrink: 0; align-self: flex-start; margin-top: 0.3em;"></span>
+            <span style="flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere;">{{ item }}</span>
           </div>
           {% endfor %}
         </div>
       </div>
       {% endif %}
+      {% endif %}
+      {% assign task_count = tasks | size %}
       {% if task_count != 0 %}
       <div>
-        <div class="label" style="margin: 0; padding: 0; line-height: 1.2;">Tasks</div>
-        <div style="padding-left: 16px;">
+        <div class="label" style="display: block; margin: 0; padding: 0; font-size: {{ head_font }}px; line-height: 1.2;">Tasks</div>
+        <div style="padding-left: {{ INDENT }}px;">
           {% for task in tasks %}
-          <div style="display: flex; align-items: center; gap: 8px; padding: 2px 0; border-bottom: 1px dashed #999; font-size: {{ left_font }}; font-weight: normal;">
-            <span style="display: inline-block; width: 12px; height: 12px; border: 2px solid black; border-radius: 2px; flex-shrink: 0;"></span>
-            <span>{{ task }}</span>
+          <div style="display: flex; align-items: baseline; gap: {{ ROW_GAP }}px; padding: 1px 0; border-bottom: 1px dashed #999; font-weight: normal;">
+            <span style="display: inline-block; box-sizing: border-box; width: 0.8em; height: 0.8em; border: 0.13em solid black; border-radius: 0.13em; flex-shrink: 0; align-self: flex-start; margin-top: 0.3em;"></span>
+            <span style="flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere;">{{ task }}</span>
           </div>
           {% endfor %}
         </div>
@@ -140,7 +369,11 @@ of the panel. --{% endcomment %}
       {% endif %}
     </div>
 
-    <div class="column" style="flex: 38; height: 100%; display: flex; white-space: nowrap; flex-direction: column; justify-content: center; gap: 16px; font-family: monospace; font-size: 16px;">
+    {%- comment -%}-- The right column is fixed-format and cannot wrap, so it
+    takes the width it needs and the left column, which can wrap, takes what is
+    left. Pinning it the other way round — a share of the panel each — is what
+    left 26px stranded in a column that had no use for them. --{%- endcomment -%}
+    <div class="column" style="flex: 0 0 auto; width: auto; min-width: 252px; height: 100%; display: flex; white-space: nowrap; flex-direction: column; justify-content: center; gap: 16px; font-family: monospace; font-size: 16px; line-height: 1.3;">
       <div>
         {% comment %}-- UV rides on the Weather heading rather than taking a row of its
         own: it is a single number, and the heading line is already half empty. --{% endcomment %}
@@ -151,20 +384,20 @@ of the panel. --{% endcomment %}
         <div>
           {% if weather.sf %}
           <div style="display: flex; justify-content: space-between; gap: 16px; padding: 3px 0; border-bottom: 1px dashed #ccc;">
-            <span style="min-width: 110px;">San Francisco</span>
+            <span>San Francisco</span>
             <span>{{ weather.sf.high }}&deg;F/{{ weather.sf.low }}&deg;F</span>
           </div>
           {% endif %}
           {% if weather.oakland %}
           <div style="display: flex; justify-content: space-between; gap: 16px; padding: 3px 0; border-bottom: 1px dashed #ccc;">
-            <span style="min-width: 110px;">Oakland</span>
+            <span>Oakland</span>
             <span>{{ weather.oakland.high }}&deg;F/{{ weather.oakland.low }}&deg;F</span>
           </div>
           {% endif %}
           {% if weather.berkeley_marina %}
           <div style="padding: 3px 0; border-bottom: 1px dashed #ccc;">
             <div style="display: flex; justify-content: space-between; gap: 16px;">
-              <span style="min-width: 110px;">Berkeley Marina</span>
+              <span>Berkeley Marina</span>
               <span>{{ weather.berkeley_marina.high }}&deg;F/{{ weather.berkeley_marina.low }}&deg;F</span>
             </div>
             <div style="font-size: 12px; font-weight: normal; padding-left: 8px;">
@@ -175,9 +408,12 @@ of the panel. --{% endcomment %}
         </div>
       </div>
       <div>
-        <div class="label" style="margin: 0; padding: 0; line-height: 1.2;">BART</div>
-        <div style="width: 75%;">
-          <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: normal; padding: 2px 0;">
+        <div class="label" style="display: block; margin: 0; padding: 0; line-height: 1.2;">BART</div>
+        {% comment %}-- Sized to its own widest line — the two station names — rather
+        than to a share of the column, which at 252px would have left the header a
+        pixel of room. It reads as the narrower table either way. --{% endcomment %}
+        <div style="width: max-content;">
+          <div style="display: flex; justify-content: space-between; gap: 16px; font-size: 12px; font-weight: normal; padding: 2px 0;">
             <span>19th St</span>
             <span>Montgomery St</span>
           </div>
