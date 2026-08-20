@@ -5,42 +5,62 @@ Today's calendar events for the TRMNL dashboard, blended from multiple sources.
 ## How it fits together
 
 ```
-update                 →  EVENTS=$(events/fetch)            →  trmnl.json {.events}
-                                  │
-events/fetch (aggregator)         │  runs every executable in sources/,
-                                  │  merges, filters to today, sorts
-        ┌─────────────────────────┴─────────────────────────┐
-sources/recurring (bash+jq)                       sources/ics (Go binary)
-   Notes repo weekly/monthly events                  N .ics feeds (Luma, Google…)
-   $NOTES_DIRECTORY                                  events/feeds.conf
+update  →  EVENTS=$(events/fetch)  →  trmnl.json {.events}
+                    │
+       ┌────────────┴───────────┐
+sources/recurring (bash+jq)   sources/ics (Go binary)      ← produce
+  vault weekly/monthly notes    N .ics feeds (Luma, Google…)
+  $NOTES_DIRECTORY              events/feeds.conf
+       └────────────┬───────────┘
+                    │  merge → today only → ignore.conf → tag (tags.conf)
+                    ↓
+          filters/tides (Go binary)                        ← rewrite
+            clamps `sailing` events to Cal Sailing's live hours
+                    │
+                    ↓  sort by tag, then time → de-duplicate
 ```
 
-`events/fetch` is the only place that knows the time window ("today"). Each
-source adapter is a standalone executable that prints a JSON **array** of
-normalized event objects and exits 0 even on failure (empty array). This keeps
-the dashboard resilient: a broken or unconfigured source never breaks the rest.
+`events/fetch` is the only place that knows the time window ("today"). The
+pipeline has two kinds of stage, each discovered by dropping an executable into
+a directory:
+
+| stage        | lives in         | contract                                        |
+|--------------|------------------|-------------------------------------------------|
+| **source**   | `events/sources/`| prints a JSON **array** of normalized events     |
+| **filter**   | `events/filters/`| reads that array on **stdin**, prints one back   |
+
+Both exit 0 even on failure, and both are resilient by design: a source that
+breaks contributes an empty array, a filter that breaks hands back the events it
+was given. A broken or unconfigured stage never takes the rest down with it.
+
+Every stage can be switched off individually in **`events/sources.conf`** (see
+[Turning sources on and off](#turning-sources-on-and-off)).
 
 ## Normalized event schema
 
 Every adapter emits objects with this shape:
 
-| field     | type            | notes                                           |
-|-----------|-----------------|-------------------------------------------------|
-| `title`   | string          | event name (the only text shown on-screen)      |
-| `start`   | string \| null  | local 24-hour `"HH:MM"`; `null` for all-day     |
-| `end`     | string \| null  | local 24-hour `"HH:MM"`; optional               |
-| `all_day` | bool            | true → rendered as "All day"                    |
-| `message` | string \| null  | optional note; indented sub-line under the event|
-| `date`    | string          | local `"YYYY-MM-DD"` the occurrence falls on    |
-| `sort`    | string          | `"YYYY-MM-DDTHH:MM"` ordering key                |
-| `source`  | string          | provenance (`recurring`, `luma`, …); internal   |
+| field     | type            | set by   | notes                                  |
+|-----------|-----------------|----------|----------------------------------------|
+| `title`   | string          | source   | event name                             |
+| `start`   | string \| null  | source   | local 24-hour `"HH:MM"`; `null` for all-day |
+| `end`     | string \| null  | source   | local 24-hour `"HH:MM"`; optional      |
+| `all_day` | bool            | source   | true → rendered as "All day"           |
+| `message` | string \| null  | source   | optional note; indented sub-line       |
+| `tags`    | \[string]       | source   | the event's own tags, lowercase; optional |
+| `date`    | string          | source   | local `"YYYY-MM-DD"` the occurrence falls on |
+| `sort`    | string          | source   | `"YYYY-MM-DDTHH:MM"` ordering key       |
+| `source`  | string          | source   | provenance (`recurring`, `the-commons`, …) |
+| `tag`     | string          | **aggregator** | display tag: `Commons`, `Dance`, `Sailing`, `Other` |
 
-`date`, `sort`, and `source` are used only by the aggregator — the device
-renders **time + title**, plus the optional `message` as an indented line
-beneath it. Sources that have no message may omit the field. Genuine conflicts
-(different events at overlapping times) are kept on purpose; only **exact
-duplicates** — same title and same start, e.g. one event cross-posted to two
-calendars — are collapsed to a single entry by the aggregator.
+The device renders **tag + title + time**, plus the optional `message` as an
+indented line beneath. `tags`, `date`, `sort`, and `source` are inputs to the
+aggregator rather than screen content; sources that have none of a given field
+may simply omit it.
+
+Genuine conflicts (different events at overlapping times) are kept on purpose;
+only **exact duplicates** — same title and same start, e.g. one event
+cross-posted to two calendars — are collapsed to a single entry.
 
 ## Configuration
 
@@ -61,9 +81,17 @@ luma-personal  https://api.lu.ma/ics/get?u=...
 gcal           https://calendar.google.com/.../basic.ics  # Google: Settings → Secret iCal address
 ```
 
-`<label>` only tags the event's internal `source` field (never shown). A line
-with just a URL gets a label derived from its host (`luma`/`gcal`/…). The legacy
-`LUMA_ICS_URL` env var, if set, is still honored as one extra feed labeled `luma`.
+`<label>` names the event's `source` field. It is not printed on the device, but
+it is what a `source:` rule in [`tags.conf`](#tags) matches on — labelling a feed
+`the-commons` is how everything on that calendar comes out tagged COMMONS. A
+line with just a URL gets a label derived from its host (`luma`/`gcal`/…). The
+legacy `LUMA_ICS_URL` env var, if set, is still honored as one extra feed
+labeled `luma`.
+
+Two more config files round out the pipeline, both gitignored and both seeded by
+`setup` from their `.example`: **`events/tags.conf`** decides how events are
+[tagged and ordered](#tags), and **`events/sources.conf`**
+[switches stages on and off](#turning-sources-on-and-off).
 
 ### Recurring events (RRULE)
 
@@ -94,6 +122,70 @@ Daily Standup*    # a recurring series you skip
 (`:`, `(`, `.`, …) is matched literally. `#` comments and blank lines are
 ignored. The path is overridable with `$EVENTS_IGNORE_FILE`.
 
+## Tags
+
+Every event reaches the device carrying exactly one **tag** — `Commons`,
+`Dance`, `Sailing`, or `Other` — printed in bold at the head of its row. The
+list is sorted by tag first and time second, so the day reads as a few labelled
+runs rather than one undifferentiated column.
+
+The tag vocabulary, its precedence, and its on-screen order all live in
+**`events/tags.conf`** (gitignored; `setup` seeds it from
+`events/tags.conf.example`). One rule per line, `<Tag>  <kind>:<glob>`:
+
+```sh
+Commons   source:the-commons     # everything on The Commons' calendar
+Dance     tag:dance              # notes whose frontmatter says `dance`
+Sailing   tag:sailing
+Sailing   title:*Cal Sailing*    # ...and a net for sailing off a calendar
+```
+
+`<kind>` is where the tag comes from — the three provenances the dashboard
+supports:
+
+| kind      | matches against                | provenance                        |
+|-----------|--------------------------------|-----------------------------------|
+| `tag:`    | the event's own `tags` array   | **frontmatter** of a vault note   |
+| `source:` | the event's `source` field     | **the calendar** it arrived on: an adapter name (`recurring`) or a feed label from `feeds.conf` (`the-commons`) |
+| `title:`  | the event's title              | the **schedule** that named it — the catch-all for feeds that tag nothing |
+
+Rules are evaluated top to bottom and the **first match wins**, so file order is
+precedence: put the specific rule above the general one. An event matching no
+rule is tagged `Other`.
+
+On-screen **order** is the order tags first appear in the file, with `Other`
+last unless the file places it itself. So moving the `Sailing` block above
+`Dance` moves sailing up the dashboard — no template change needed.
+
+Globs work as they do in `ignore.conf`: `*` matches any run of characters, `?` a
+single character, everything else is literal, and matching is case-insensitive.
+Because a title may contain spaces, everything after the first whitespace run is
+the matcher (`Sailing  title:Cal Sailing*` works). Trailing `#` comments and
+blank lines are ignored. The path is overridable with `$EVENTS_TAGS_FILE`.
+
+A missing `tags.conf` is not fatal — every event simply comes out `Other`, in
+plain time order, and the aggregator says so on stderr.
+
+## Turning sources on and off
+
+**`events/sources.conf`** (gitignored; `setup` seeds it from
+`events/sources.conf.example`) switches individual pipeline stages — sources and
+filters alike — without deleting anything:
+
+```sh
+recurring  on    # weekly/monthly notes from the vault
+ics        on    # .ics calendar feeds
+tides      off   # stop reconciling sailing times with the club's hours
+```
+
+The name is the executable's filename in `sources/` or `filters/`. `on` also
+accepts `yes`/`true`/`1`/`enabled` and `off` accepts `no`/`false`/`0`/`disabled`,
+case-insensitively. **A stage that isn't listed defaults to on**, so dropping a
+new adapter into `sources/` works without touching this file — and a name here
+that matches no stage warns on stderr rather than silently doing nothing. The
+path is overridable with `$EVENTS_SOURCES_FILE`.
+
+
 ## Recurring-event notes
 
 The `recurring` source scans the **entire** `$NOTES_DIRECTORY` (the same vault
@@ -104,6 +196,8 @@ event when its frontmatter is tagged with **both** `event` and `recurring`:
 ---
 start: 18:00            # 24-hour local time (omit for an all-day event)
 end:   19:30            # optional
+start_dst: 18:00        # optional; replaces start while DST is in effect
+end_dst:   20:30        # optional; replaces end while DST is in effect
 weekday: Tuesday        # full or 3-letter; also accepts a CSV list (Mon, Thu)
 week: 2                 # optional; 2nd Tuesday of the month. Omit = every week.
 message: Bring your copy # optional; rendered as an indented sub-line
@@ -111,6 +205,7 @@ title: Book Club        # optional; defaults to the note's filename
 tags:
   - event
   - recurring
+  - dance               # any further tag rides along for events/tags.conf
 ---
 Notes body is ignored.
 ```
@@ -119,6 +214,27 @@ The note is shown only on days matching `weekday`. Weekday matching is
 case-insensitive and accepts full (`Monday`) or 3-letter (`Mon`) names; multiple
 days via `weekday: Mon, Thu`. `tags` may be a YAML list (as above), an inline
 `[event, recurring]` array, or a CSV. The title defaults to the filename.
+
+Every tag past the two structural ones (`event`, `recurring`) is carried through
+to the emitted event's `tags` array — this is the **frontmatter provenance** the
+`tag:` rules in [`tags.conf`](#tags) match on. Tagging a note `dance` is all it
+takes to file it under DANCE on the device.
+
+#### Seasonal windows (`start_dst` / `end_dst`)
+
+A series that shifts with Daylight Saving Time can carry a second window; each
+side overrides independently, so a note may shift only its end:
+
+```markdown
+start: 13:00            # Pacific Standard Time
+end:   16:00
+start_dst: 13:00        # ...and an hour later all summer
+end_dst:   17:00
+```
+
+Whether DST is in effect is worked out from `$EVENTS_TZ` itself rather than a
+hardcoded North American rule: DST is on when the day's UTC offset exceeds the
+year's standard offset. A zone without DST never triggers the override.
 
 #### Monthly series (`week`)
 
@@ -149,6 +265,47 @@ adapter through `$EVENTS_TODAY`, which now also determines the weekday and the
 week-of-month — a caller-supplied `NOTES_DIRECTORY`/`EVENTS_TZ`/`EVENTS_TODAY`
 takes precedence over `.env`.
 
+## Sailing times and the tide (`filters/tides`)
+
+Cal Sailing sits on Berkeley Marina, whose shallow basin empties at low tide, so
+the club's open and close times move day to day with the water instead of
+following a timetable. That splits the sailing event across two homes, and the
+split is the point:
+
+- **The schedule lives in the notes vault.** Three notes tagged `event`,
+  `recurring`, `sailing` — Monday, Thursday, Saturday — hold the *nominal*
+  lesson windows, exactly like every other recurring note. Copies ready for the
+  vault are in [`events/vault-notes/sailing/`](vault-notes/). Change when you
+  sail by editing a note; no code, no redeploy.
+- **The water lives in this repo.** `events/tides/` (Go, stdlib only) builds to
+  `events/filters/tides`, which rewrites those notes' times to what the tide
+  actually allows.
+
+For every event tagged `sailing` (override the tag with `$TIDES_TAG`) the filter
+intersects the note's window with the club's real hours for that date:
+
+```
+shown = [ max(club_open, note_start), min(club_close, note_end) ]
+```
+
+so a Saturday 10 AM–1 PM lesson on a day the club can only open at 10:22 shows
+as **10:22–13:00**, and a day the tide holds the club shut past 1 PM drops off
+the dashboard entirely rather than advertising hours you cannot sail. A day the
+club never opens drops too. An all-day sailing event has no window of its own to
+narrow, so it simply adopts the club's hours.
+
+Club hours are scraped from the published open/close schedule
+(`csc-openclose-times?view=month`, server-rendered). Rows are parsed by their
+NOAA `bdate`, and 12-hour times (incl. the literal `Noon`) are converted to
+24-hour. Open **and** closed days are recorded, so "club shut" stays distinct
+from "scrape failed". A successful fetch caches the whole visible month to
+`events/filters/.csc-cache.json` and is reused when the site is unreachable.
+
+Being a filter rather than a source changes the failure mode for the better: if
+the scrape fails and nothing is cached for the date, the lesson still appears at
+its nominal time with a note on stderr — degraded, not missing. Overridable via
+`$CSC_URL`, `$CSC_CACHE_FILE`, `$TIDES_TAG`.
+
 ## Adding a new source
 
 Drop a new executable into `events/sources/` that prints the normalized array
@@ -160,35 +317,38 @@ and exits 0. That's it — the aggregator discovers it automatically.
 - **Network/parsing-heavy source** (a non-ICS API) → a Go binary built into
   `events/sources/<name>` (see `ics/`, mirroring `BART/`). Add its build step to
   `setup` and its output path to `.gitignore`.
+- **Not a new source at all** — something that *changes* events already in the
+  list → a filter instead (see [Adding a new filter](#adding-a-new-filter)).
 
-### Cal Sailing Club lesson window (`csc`)
+Add the new stage to `events/sources.conf.example` too, so it is switchable
+alongside the others.
 
-`events/csc/` (Go, stdlib only) emits a single event titled
-**"Cal Sailing Club @ Berkeley Marina"** for `$EVENTS_TODAY` showing **when you can
-actually take a Beginning Sailing Lesson today** — the *intersection* of two
-inputs:
+## Adding a new filter
 
-1. **Live club hours.** Scrapes the published open/close schedule
-   (`csc-openclose-times?view=month`, server-rendered). Rows are parsed by their
-   NOAA `bdate`, and 12-hour times (incl. the literal `Noon`) are converted to
-   24-hour. Open AND closed days are recorded so "club shut" is distinct from
-   "scrape failed". A successful fetch caches the whole visible month to
-   `events/sources/.csc-cache.json` and is reused when the site is unreachable.
+Drop an executable into `events/filters/` that reads the event array on stdin
+and prints one on stdout. Filters run **after** tagging, so `tag` and `tags` are
+available to match on, and before sorting, so a filter may freely rewrite times.
 
-2. **Lesson windows** from **`events/csc-lessons.conf`** (gitignored; `setup`
-   seeds it from `events/csc-lessons.conf.example`). One line per weekday:
-   `<weekday> <start> <end> [<dst_start> <dst_end>]` (24-hour). The optional DST
-   pair applies while Daylight Saving Time is in effect (Pacific zone, via
-   `time.IsDST`). A weekday with no entry has no lessons.
+A filter must never empty the dashboard: on any error, print the input back
+unchanged (the aggregator also keeps the previous list if a filter's output
+isn't a JSON array). Add its build step to `setup`, its output path to
+`.gitignore`, and a line to `events/sources.conf.example`.
 
-The shown time is `[max(open, lesson_start), min(close, lesson_end)]` per window.
-If tides push the club open past a window (e.g. a Saturday opening at 1:30 PM vs a
-10 AM–1 PM lesson), that day is suppressed. A non-lesson day, a closed club, an
-empty overlap, or any error yields `[]`. If the lessons config is missing, it
-degrades to showing the raw club hours. Overridable via `$CSC_URL`,
-`$CSC_CACHE_FILE`, `$CSC_LESSONS_FILE`.
-
-Read any per-source config from the environment; the aggregator exports
+Read any per-stage config from the environment; the aggregator exports
 `NOTES_DIRECTORY`, `NOTES_EVENTS_SUBDIR`, `LUMA_ICS_URL`, `EVENTS_FEEDS_FILE`,
-`EVENTS_TZ`, and `EVENTS_TODAY` (use `EVENTS_TODAY` so every adapter agrees on
-the date even across a midnight boundary).
+`EVENTS_TZ`, and `EVENTS_TODAY` (use `EVENTS_TODAY` so every stage agrees on the
+date even across a midnight boundary).
+
+## Tests
+
+```sh
+events/recurring_test.sh    # vault notes: weekday, week-of-month, DST windows
+events/tags_test.sh         # tagging, ordering, stage toggles, degraded configs
+(cd events/tides && go test ./...)
+(cd events/ics   && go test ./...)
+```
+
+`tags_test.sh` drives `events/fetch` against a scratch pipeline — fixture
+sources, fixture filters, fixture configs — through `$EVENTS_SOURCES_DIR`,
+`$EVENTS_FILTERS_DIR`, `$EVENTS_TAGS_FILE`, `$EVENTS_IGNORE_FILE`, and
+`$EVENTS_SOURCES_FILE`, so it touches neither the vault nor the network.
