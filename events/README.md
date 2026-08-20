@@ -17,7 +17,7 @@ sources/recurring (bash+jq)   sources/ics (Go binary)      ← produce
           filters/tides (Go binary)                        ← rewrite
             clamps `sailing` events to Cal Sailing's live hours
                     │
-                    ↓  sort by tag, then time → de-duplicate
+                    ↓  sort by tag, then time → de-duplicate → split into sections
 ```
 
 `events/fetch` is the only place that knows the time window ("today"). The
@@ -51,16 +51,34 @@ Every adapter emits objects with this shape:
 | `date`    | string          | source   | local `"YYYY-MM-DD"` the occurrence falls on |
 | `sort`    | string          | source   | `"YYYY-MM-DDTHH:MM"` ordering key       |
 | `source`  | string          | source   | provenance (`recurring`, `the-commons`, …) |
-| `tag`     | string          | **aggregator** | display tag: `Commons`, `Dance`, `Sailing`, `Other` |
+| `tag`     | string          | **aggregator** | the tag it was classified under: `Commons`, `Dance`, `Sailing`, `Other` |
 
-The device renders **tag + title + time**, plus the optional `message` as an
-indented line beneath. `tags`, `date`, `sort`, and `source` are inputs to the
-aggregator rather than screen content; sources that have none of a given field
-may simply omit it.
+The device renders **title + time**, plus the optional `message` as an indented
+line beneath, and `tag` as a bold label at the head of the row in a `tagged`
+section. `tags`, `date`, `sort`, and `source` are inputs to the aggregator
+rather than screen content; sources that have none of a given field may simply
+omit it.
 
 Genuine conflicts (different events at overlapping times) are kept on purpose;
 only **exact duplicates** — same title and same start, e.g. one event
 cross-posted to two calendars — are collapsed to a single entry.
+
+### What the aggregator returns
+
+Stages speak flat arrays among themselves, but `events/fetch` prints the day
+already split into the dashboard's **sections** — see
+[Tags and sections](#tags-and-sections):
+
+```json
+[ { "heading": "Dance",  "tagged": false, "events": [ … ] },
+  { "heading": "Events", "tagged": true,  "events": [ … ] } ]
+```
+
+| field     | type       | notes                                                   |
+|-----------|------------|---------------------------------------------------------|
+| `heading` | string     | the section heading, i.e. the tag name (or `Events`)     |
+| `tagged`  | bool       | whether rows carry their `tag` as a label — true only for the shared `Events` section |
+| `events`  | \[event]   | in order; never empty, since empty sections are omitted  |
 
 ## Configuration
 
@@ -82,7 +100,7 @@ gcal           https://calendar.google.com/.../basic.ics  # Google: Settings →
 ```
 
 `<label>` names the event's `source` field. It is not printed on the device, but
-it is what a `source:` rule in [`tags.conf`](#tags) matches on — labelling a feed
+it is what a `source:` rule in [`tags.conf`](#tags-and-sections) matches on — labelling a feed
 `the-commons` is how everything on that calendar comes out tagged COMMONS. A
 line with just a URL gets a label derived from its host (`luma`/`gcal`/…). The
 legacy `LUMA_ICS_URL` env var, if set, is still honored as one extra feed
@@ -90,7 +108,7 @@ labeled `luma`.
 
 Two more config files round out the pipeline, both gitignored and both seeded by
 `setup` from their `.example`: **`events/tags.conf`** decides how events are
-[tagged and ordered](#tags), and **`events/sources.conf`**
+[tagged and ordered](#tags-and-sections), and **`events/sources.conf`**
 [switches stages on and off](#turning-sources-on-and-off).
 
 ### Recurring events (RRULE)
@@ -122,23 +140,30 @@ Daily Standup*    # a recurring series you skip
 (`:`, `(`, `.`, …) is matched literally. `#` comments and blank lines are
 ignored. The path is overridable with `$EVENTS_IGNORE_FILE`.
 
-## Tags
+## Tags and sections
 
-Every event reaches the device carrying exactly one **tag** — `Commons`,
-`Dance`, `Sailing`, or `Other` — printed in bold at the head of its row. The
-list is sorted by tag first and time second, so the day reads as a few labelled
-runs rather than one undifferentiated column.
+Every event is classified under exactly one **tag**, and each tag is presented
+one of two ways: as a bold label at the head of its row inside the shared
+**Events** section, or — if the tag is declared a `heading` — as a **section of
+its own**, with its own heading and no label on its rows, the way Birthdays sits
+in the column. The day therefore reads as a small stack of named blocks rather
+than one undifferentiated column.
 
-The tag vocabulary, its precedence, and its on-screen order all live in
-**`events/tags.conf`** (gitignored; `setup` seeds it from
-`events/tags.conf.example`). One rule per line, `<Tag>  <kind>:<glob>`:
+The vocabulary, the precedence, the presentation, and the on-screen order all
+live in **`events/tags.conf`** (gitignored; `setup` seeds it from
+`events/tags.conf.example`). One rule or declaration per line, `<Tag>
+<something>`:
 
 ```sh
-Commons   source:the-commons     # everything on The Commons' calendar
+Dance     heading                # its own section, above Events (declared first)
 Dance     tag:dance              # notes whose frontmatter says `dance`
+
+Commons   source:the-commons     # everything on The Commons' calendar
 Sailing   tag:sailing
 Sailing   title:*Cal Sailing*    # ...and a net for sailing off a calendar
 ```
+
+### Rules: `<Tag>  <kind>:<glob>`
 
 `<kind>` is where the tag comes from — the three provenances the dashboard
 supports:
@@ -153,18 +178,42 @@ Rules are evaluated top to bottom and the **first match wins**, so file order is
 precedence: put the specific rule above the general one. An event matching no
 rule is tagged `Other`.
 
-On-screen **order** is the order tags first appear in the file, with `Other`
-last unless the file places it itself. So moving the `Sailing` block above
-`Dance` moves sailing up the dashboard — no template change needed.
-
 Globs work as they do in `ignore.conf`: `*` matches any run of characters, `?` a
 single character, everything else is literal, and matching is case-insensitive.
 Because a title may contain spaces, everything after the first whitespace run is
-the matcher (`Sailing  title:Cal Sailing*` works). Trailing `#` comments and
-blank lines are ignored. The path is overridable with `$EVENTS_TAGS_FILE`.
+the matcher (`Sailing  title:Cal Sailing*` works).
 
-A missing `tags.conf` is not fatal — every event simply comes out `Other`, in
-plain time order, and the aggregator says so on stderr.
+### Declarations: `<Tag>  heading`
+
+A `heading` line gives that tag a section of its own instead of a label on each
+row. It never matches an event — it only declares presentation, and (by being an
+appearance of the tag) where that tag sits in the order.
+
+There is nothing else to change: no template edit, no new key in `trmnl.json`.
+Promoting `Sailing` to its own section is one word.
+
+### Order
+
+On-screen order is the order tags first appear in the file, declarations
+included, with `Other` last unless the file places it itself.
+
+- A **heading** tag's section sits where its tag first appears.
+- The shared **Events** section sits where the first non-heading tag appears.
+
+So the example above puts Dance above Events, because `Dance heading` is the
+first line; moving that block below `Commons` moves the section below Events.
+Within a section, events stay in tag order, then all-day first, then time.
+
+A section with nothing in it today is omitted entirely, the way Birthdays is.
+
+### Degrading
+
+Trailing `#` comments and blank lines are ignored, and a malformed line is
+skipped with a warning rather than taking the file down. The path is overridable
+with `$EVENTS_TAGS_FILE`.
+
+A missing `tags.conf` is not fatal — every event simply comes out `Other` in one
+Events section, in plain time order, and the aggregator says so on stderr.
 
 ## Turning sources on and off
 
@@ -217,7 +266,7 @@ days via `weekday: Mon, Thu`. `tags` may be a YAML list (as above), an inline
 
 Every tag past the two structural ones (`event`, `recurring`) is carried through
 to the emitted event's `tags` array — this is the **frontmatter provenance** the
-`tag:` rules in [`tags.conf`](#tags) match on. Tagging a note `dance` is all it
+`tag:` rules in [`tags.conf`](#tags-and-sections) match on. Tagging a note `dance` is all it
 takes to file it under DANCE on the device.
 
 #### Seasonal windows (`start_dst` / `end_dst`)

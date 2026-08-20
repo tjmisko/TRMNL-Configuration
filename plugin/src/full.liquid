@@ -17,15 +17,26 @@
 {% assign left_rows = 0 %}
 {% assign birthday_count = birthdays | size %}
 {% if birthday_count != 0 %}{% assign left_rows = left_rows | plus: 1 | plus: birthday_count %}{% endif %}
-{% comment %}-- An event costs one row, plus one for a message, plus one more when its
-title wraps onto a second line. How many characters fit depends on the font we are about
-to choose from this very count, so this is deliberately an estimate rather than a second
-pass: ~30 characters is the budget at 14px, the size a day busy enough to matter lands on.
-Erring high is the safe direction — it only picks a font a step smaller than needed,
-whereas erring low runs the list off the bottom of the panel. --{% endcomment %}
-{% assign event_count = events | size %}
-{% assign event_msg_count = 0 %}{% for e in events %}{% if e.message != blank %}{% assign event_msg_count = event_msg_count | plus: 1 %}{% endif %}{% assign title_len = e.title | size %}{% if e.tag == 'Other' and e.source == 'rallysf' %}{% assign title_len = title_len | plus: 10 %}{% endif %}{% if title_len > 30 %}{% assign event_msg_count = event_msg_count | plus: 1 %}{% endif %}{% endfor %}
-{% if event_count != 0 %}{% assign left_rows = left_rows | plus: 1 | plus: event_count | plus: event_msg_count %}{% endif %}
+{% comment %}-- Each section costs a heading row; each event costs one row, plus one for a
+message, plus one more when its title wraps onto a second line. How many characters fit
+depends on the font we are about to choose from this very count, so this is deliberately
+an estimate rather than a second pass: ~30 characters is the budget at 14px in a tagged
+section, and ~38 in one without a tag gutter. Erring high is the safe direction — it only
+picks a font a step smaller than needed, whereas erring low runs the list off the bottom
+of the panel. --{% endcomment %}
+{% assign event_rows = 0 %}
+{% for section in events %}
+  {% assign event_rows = event_rows | plus: 1 %}
+  {% if section.tagged %}{% assign wrap_at = 30 %}{% else %}{% assign wrap_at = 38 %}{% endif %}
+  {% for e in section.events %}
+    {% assign event_rows = event_rows | plus: 1 %}
+    {% if e.message != blank %}{% assign event_rows = event_rows | plus: 1 %}{% endif %}
+    {% assign title_len = e.title | size %}
+    {% if section.tagged and e.tag == 'Other' and e.source == 'rallysf' %}{% assign title_len = title_len | plus: 10 %}{% endif %}
+    {% if title_len > wrap_at %}{% assign event_rows = event_rows | plus: 1 %}{% endif %}
+  {% endfor %}
+{% endfor %}
+{% assign left_rows = left_rows | plus: event_rows %}
 {% if is_last_day_of_month %}{% assign eom_count = checklists.end_of_month | size %}{% assign left_rows = left_rows | plus: 1 | plus: eom_count %}{% endif %}
 {% if is_sunday %}{% assign sun_count = checklists.sunday | size %}{% assign left_rows = left_rows | plus: 1 | plus: sun_count %}{% endif %}
 {% assign task_count = tasks | size %}
@@ -55,36 +66,38 @@ whereas erring low runs the list off the bottom of the panel. --{% endcomment %}
         </div>
       </div>
       {% endif %}
-      {% if event_count != 0 %}
+      {% comment %}-- The events pipeline hands us the left column's event sections
+      already ordered, already non-empty, and already sorted within themselves. A section
+      whose tag was declared `heading` in tags.conf carries its own heading and needs no
+      tag on its rows; the rest share one "Events" section where the tag leads each row in
+      a fixed 8-character column, so the titles line up down the page. Monospace makes
+      `ch` an exact character width, so that column holds at every adaptive font size. --{% endcomment %}
+      {% for section in events %}
       <div>
-        <div class="label" style="margin: 0; padding: 0; line-height: 1.2;">Events</div>
+        <div class="label" style="margin: 0; padding: 0; line-height: 1.2;">{{ section.heading }}</div>
         <div style="padding-left: 16px;">
-          {% comment %}-- events arrive grouped by tag (Commons, Dance, Sailing, Other) and in
-          time order within each group. The tag leads every row in a fixed 8-character
-          column so the titles line up down the page; monospace makes `ch` an exact
-          character width, so the column holds at every adaptive font size. A run of the
-          same tag gets a little air above it, which separates the groups without
-          spending a whole row on a heading. --{% endcomment %}
           {% assign prev_tag = '' %}
-          {% for event in events %}
-          {% comment %}-- The tag already names where a Commons event came from, so the
-          `@ origin` suffix is only worth its width on untagged (Other) events. --{% endcomment %}
-          {% assign origin = '' %}{% if event.tag == 'Other' %}{% case event.source %}{% when 'the-commons' %}{% assign origin = 'The Commons' %}{% when 'rallysf' %}{% assign origin = 'RallySF' %}{% endcase %}{% endif %}
-          <div style="padding: 2px 0; border-bottom: 1px dashed #999; font-size: {{ left_font }}; font-weight: normal;{% unless forloop.first or event.tag == prev_tag %} margin-top: 5px;{% endunless %}">
+          {% for event in section.events %}
+          {% comment %}-- Within a tagged section a run of the same tag gets a little air
+          above it, which separates the groups without spending a whole row on a heading.
+          The tag also already names where a Commons event came from, so the `@ origin`
+          suffix is only worth its width on untagged (Other) events. --{% endcomment %}
+          {% assign origin = '' %}{% if section.tagged and event.tag == 'Other' %}{% case event.source %}{% when 'the-commons' %}{% assign origin = 'The Commons' %}{% when 'rallysf' %}{% assign origin = 'RallySF' %}{% endcase %}{% endif %}
+          <div style="padding: 2px 0; border-bottom: 1px dashed #999; font-size: {{ left_font }}; font-weight: normal;{% if section.tagged %}{% unless forloop.first or event.tag == prev_tag %} margin-top: 5px;{% endunless %}{% endif %}">
             <div style="display: flex; gap: 10px; align-items: baseline;">
-              <span style="flex-shrink: 0; min-width: 8ch; font-weight: bold; letter-spacing: 0.06em;">{{ event.tag | default: 'Other' | upcase }}</span>
+              {% if section.tagged %}<span style="flex-shrink: 0; min-width: 8ch; font-weight: bold; letter-spacing: 0.06em;">{{ event.tag | default: 'Other' | upcase }}</span>{% endif %}
               <span style="flex: 1; min-width: 0; overflow-wrap: anywhere;">{{ event.title }}{% if origin != blank %} @ {{ origin }}{% endif %}</span>
               <span style="flex-shrink: 0; text-align: right;">{% if event.all_day %}All day{% else %}{{ event.start }}{% if event.end %}&ndash;{{ event.end }}{% endif %}{% endif %}</span>
             </div>
             {% if event.message != blank %}
-            <div style="padding-left: calc(8ch + 10px); font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ event.message }}</div>
+            <div style="padding-left: {% if section.tagged %}calc(8ch + 10px){% else %}16px{% endif %}; font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ event.message }}</div>
             {% endif %}
           </div>
           {% assign prev_tag = event.tag %}
           {% endfor %}
         </div>
       </div>
-      {% endif %}
+      {% endfor %}
       {% if is_last_day_of_month %}
       <div>
         <div class="label" style="margin: 0; padding: 0; line-height: 1.2;">End of Month Checklist</div>
@@ -129,7 +142,12 @@ whereas erring low runs the list off the bottom of the panel. --{% endcomment %}
 
     <div class="column" style="flex: 38; height: 100%; display: flex; white-space: nowrap; flex-direction: column; justify-content: center; gap: 16px; font-family: monospace; font-size: 16px;">
       <div>
-        <div class="label" style="margin: 0; padding: 0; line-height: 1.2;">Weather</div>
+        {% comment %}-- UV rides on the Weather heading rather than taking a row of its
+        own: it is a single number, and the heading line is already half empty. --{% endcomment %}
+        <div class="label" style="display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin: 0; padding: 0; line-height: 1.2;">
+          <span>Weather</span>
+          {% if weather.uv %}<span style="font-weight: normal;">UV: <span style="font-weight: bold;">{{ weather.uv.max }}</span></span>{% endif %}
+        </div>
         <div>
           {% if weather.sf %}
           <div style="display: flex; justify-content: space-between; gap: 16px; padding: 3px 0; border-bottom: 1px dashed #ccc;">
@@ -152,19 +170,6 @@ whereas erring low runs the list off the bottom of the panel. --{% endcomment %}
             <div style="font-size: 12px; font-weight: normal; padding-left: 8px;">
               Wind {{ weather.berkeley_marina.wind.dir }} {{ weather.berkeley_marina.wind.speed_kt }} kt{% if weather.berkeley_marina.wind.gust_kt %} (G {{ weather.berkeley_marina.wind.gust_kt }}){% endif %}
             </div>
-          </div>
-          {% endif %}
-          {% if weather.uv %}
-          <div style="padding: 3px 0; border-bottom: 1px dashed #ccc;">
-            <div style="display: flex; justify-content: space-between; gap: 16px;">
-              <span style="min-width: 110px;">UV Index</span>
-              <span>{{ weather.uv.max }} {{ weather.uv.band }}</span>
-            </div>
-            {% if weather.uv.max >= 6 and weather.uv.peak %}
-            <div style="font-size: 12px; font-weight: normal; padding-left: 8px;">
-              Peak {{ weather.uv.peak }}
-            </div>
-            {% endif %}
           </div>
           {% endif %}
         </div>
