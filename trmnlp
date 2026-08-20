@@ -39,12 +39,18 @@ case "$cmd" in
     # Point settings.yml at the local server
     sed -i "s|^polling_url:.*|polling_url: http://host.docker.internal:${LOCAL_PORT}/trmnl.json|" "$SETTINGS"
 
-    # Restore original URL and kill HTTP server on exit
+    # Restore original URL and kill HTTP server on exit.
+    #
+    # INT and TERM are trapped explicitly, not just EXIT: settings.yml is a
+    # tracked file, so a serve that dies on Ctrl-C or a `kill` leaves the
+    # localhost polling_url staged for whoever commits next — and a plugin
+    # pushed with that URL polls a host that only exists on this machine.
+    # Running twice is harmless; the sed is idempotent and the kill is guarded.
     cleanup() {
       sed -i "s|^polling_url:.*|polling_url: ${ORIGINAL_URL}|" "$SETTINGS"
       kill "$HTTP_PID" 2>/dev/null || true
     }
-    trap cleanup EXIT
+    trap cleanup EXIT INT TERM
 
     docker run \
       --publish 4567:4567 \
