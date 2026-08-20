@@ -1,11 +1,3 @@
-# plugin/src/settings.yml.example — template for the plugin definition.
-#
-# The real settings.yml is what `trmnlp push` uploads, and its polling_headers
-# carry the shared secret the polling URL is gated on. It is gitignored and
-# built from this file by ./setup, which fills the token in from .env.
-#
-# Editing this file does not change your local settings.yml — ./setup only
-# seeds one that does not exist yet, the same as it does for .env.
 ---
 strategy: polling
 no_screen_padding: 'no'
@@ -15,7 +7,7 @@ polling_verb: get
 framework_version: 2.3.7
 serverless_language: ''
 polling_url: https://retend.app/trmnl.json
-polling_headers: content-type=application/json&x-plugin-token=REPLACE_WITH_TRMNL_PLUGIN_TOKEN
+polling_headers: content-type=application/json&x-plugin-token={{ plugin_token }}
 polling_body: ''
 id: 243914
 oauth_enabled: 'false'
@@ -38,6 +30,12 @@ oauth_token_field_name: ''
 oauth_expiry_field_name: ''
 oauth_expiry_strategy: ''
 oauth_fixed_expiry_ms: ''
+custom_fields:
+- keyname: plugin_token
+  field_type: password
+  name: Plugin token
+  description: Shared secret the polling URL is gated on. Set here, not in the repo.
+  optional: false
 name: TRMNL Smartscreen
 description:
 refresh_interval: 15

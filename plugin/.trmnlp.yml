@@ -7,7 +7,14 @@ watch:
   - src
 
 # values of custom fields (defined in src/settings.yml)
-custom_fields: {}
+#
+# plugin_token is the shared secret the hosted polling URL is gated on. On the
+# TRMNL server its value lives in the plugin's settings, never in this repo;
+# here it comes from the environment, which is the only place trmnlp expands
+# `{{ env }}`. `./trmnlp serve` repoints polling at a local copy of trmnl.json
+# and never sends the header, so an unset variable is harmless.
+custom_fields:
+  plugin_token: "{{ env.TRMNL_PLUGIN_TOKEN }}"
 
 # override variables
 variables:
