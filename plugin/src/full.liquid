@@ -26,8 +26,9 @@ Everything below is measured off the rendered 800×480 page, not guessed:
                  410px column on air between six headings.
   LIST_GAP   16  the gutter between the columns of a multi-column plain list
   RAIL_H    312  the rail is fixed-format, so its height is arithmetic rather
-                 than a fit — see the sum below. Whatever is left under BART is
-                 panel the agenda can borrow before it starts shrinking.
+                 than a fit — see the sum below. What it does not use is panel
+                 the agenda can borrow before it starts shrinking, and on a
+                 Sunday the departure board's whole share of it comes free.
   ROW_H       3  1px padding above and below each row, plus its 1px rule
   BOX_W   0.8em  the checkbox, which is sized in ems so it stays in proportion
                  to the line it sits on, plus the ROW_GAP after it
@@ -43,6 +44,7 @@ Everything below is measured off the rendered 800×480 page, not guessed:
 {%- assign LIST_MAX = 3 -%}
 {%- assign GROUP_GAP = 4 -%}
 {%- assign NONE = '' | split: ',' -%}
+{%- assign SIZES = '16,15,14,13,12,11,10,9,8' | split: ',' -%}
 
 {%- comment -%}-- The alert banner sits above the columns and takes its height
 out of theirs, so the left column has to know how tall it got before it can
@@ -75,22 +77,105 @@ agenda a step of type on every rainy day for nothing. --{%- endcomment -%}
 {%- endif -%}
 {%- assign budget = LAYOUT_H | minus: alert_h | minus: 4 -%}
 
-{%- comment -%}-- How much of the rail is going spare. It is fixed-format, so
-its height is arithmetic rather than a fit: measured off the rendered page, a
-weather or train row is 27.8px, the Berkeley Marina wind sub-line 15.6, the
-station header 19.6, a `.label` 19.2, and the rail's own flex gap 16. Today's
-data comes to 312 against 311.94 measured. Whatever is left under BART is 98px
-of blank panel that the agenda was shrinking itself to avoid using. --{%- endcomment -%}
-{%- assign rail_h = 19.2 -%}
-{%- if weather.sf -%}{%- assign rail_h = rail_h | plus: 27.8 -%}{%- endif -%}
-{%- if weather.oakland -%}{%- assign rail_h = rail_h | plus: 27.8 -%}{%- endif -%}
-{%- if weather.berkeley_marina -%}{%- assign rail_h = rail_h | plus: 43.4 -%}{%- endif -%}
-{%- assign rail_h = rail_h | plus: 16 | plus: 19.2 | plus: 19.6 -%}
+{%- comment -%}-- The longest line in each plain list. It does not change as the
+ladder walks, and the rail wants the same numbers, so it is measured once here
+rather than nine times below. --{%- endcomment -%}
+{%- assign bd_count = birthdays | size -%}
+{%- assign eom_count = 0 -%}
+{%- if is_last_day_of_month -%}{%- assign eom_count = checklists.end_of_month | size -%}{%- endif -%}
+{%- assign sun_count = 0 -%}
+{%- if is_sunday -%}{%- assign sun_count = checklists.sunday | size -%}{%- endif -%}
+{%- assign task_count = tasks | size -%}
+{%- assign bd_widest = 0 -%}
+{%- for item in birthdays -%}{%- assign n = item | size -%}{%- if n > bd_widest -%}{%- assign bd_widest = n -%}{%- endif -%}{%- endfor -%}
+{%- assign eom_widest = 0 -%}
+{%- for item in checklists.end_of_month -%}{%- assign n = item | size -%}{%- if n > eom_widest -%}{%- assign eom_widest = n -%}{%- endif -%}{%- endfor -%}
+{%- assign sun_widest = 0 -%}
+{%- for item in checklists.sunday -%}{%- assign n = item | size -%}{%- if n > sun_widest -%}{%- assign sun_widest = n -%}{%- endif -%}{%- endfor -%}
+{%- assign task_widest = 0 -%}
+{%- for item in tasks -%}{%- assign n = item | size -%}{%- if n > task_widest -%}{%- assign task_widest = n -%}{%- endif -%}{%- endfor -%}
+
+{%- comment -%}
+═══ The rail ════════════════════════════════════════════════════════════════
+Weather, then one of two things, then whatever still fits.
+
+The rail is fixed-format, so unlike the agenda its height is arithmetic rather
+than a fit. Measured off the rendered page: a weather or train row is 27.8px,
+the Berkeley Marina wind sub-line 15.6, the station header 19.6, a `.label`
+19.2, and the rail's own flex gap 16. A weekday comes to 312 against 311.94
+measured.
+
+On a Sunday the departure board is not telling anyone anything — there is no
+commute to catch — so the Sunday checklist takes that slot instead. It is the
+better trade twice over: the chores are legible at a size of their own, and the
+agenda gets back the eight rows and a heading that were crushing it, which is
+most of why Sunday used to be the worst-set day of the week.
+
+The list has to hold a full line per item over there for the height below to be
+exact, so if some future checklist entry is too long for 240px the slot goes
+back to being BART and the list stays in the column. That is a safety net, not
+a mode: it needs an item past about forty characters to fire.
+═════════════════════════════════════════════════════════════════════════════
+{%- endcomment -%}
+{%- assign rail_avail = RIGHT_W | minus: INDENT -%}
+{%- assign weather_h = 19.2 -%}
+{%- if weather.sf -%}{%- assign weather_h = weather_h | plus: 27.8 -%}{%- endif -%}
+{%- if weather.oakland -%}{%- assign weather_h = weather_h | plus: 27.8 -%}{%- endif -%}
+{%- if weather.berkeley_marina -%}{%- assign weather_h = weather_h | plus: 43.4 -%}{%- endif -%}
+{%- assign bart_h = 38.8 -%}
 {%- assign train_count = bart | size -%}
 {%- if bart_status == 'ok' and train_count > 0 -%}
-  {%- assign rail_h = train_count | times: 27.8 | plus: rail_h -%}
+  {%- assign bart_h = train_count | times: 27.8 | plus: bart_h -%}
 {%- else -%}
-  {%- assign rail_h = rail_h | plus: 19.6 -%}
+  {%- assign bart_h = bart_h | plus: 19.6 -%}
+{%- endif -%}
+
+{%- comment -%}-- Sunday keeps its checklist in the column on a day with nothing
+else on it: a panel reading "Nothing on the docket!" beside a list of chores is
+a worse use of 472px than just putting the chores in it. --{%- endcomment -%}
+{%- assign other_sections = events | size -%}
+{%- if bd_count > 0 -%}{%- assign other_sections = other_sections | plus: 1 -%}{%- endif -%}
+{%- if eom_count > 0 -%}{%- assign other_sections = other_sections | plus: 1 -%}{%- endif -%}
+{%- if task_count > 0 -%}{%- assign other_sections = other_sections | plus: 1 -%}{%- endif -%}
+
+{%- assign sunday_in_rail = false -%}
+{%- if sun_count > 0 and other_sections > 0 -%}
+  {%- assign slot = budget | minus: weather_h | minus: 16 -%}
+  {%- for rail_size in SIZES -%}
+    {%- unless sunday_in_rail -%}
+      {%- assign RF = rail_size | times: 1 -%}
+      {%- assign item_w = sun_widest | times: RF | times: 0.6 -%}
+      {%- assign item_w = RF | times: 0.8 | plus: ROW_GAP | plus: item_w -%}
+      {%- if item_w <= rail_avail -%}
+        {%- assign rden = item_w | plus: LIST_GAP -%}
+        {%- assign rcols = rail_avail | plus: LIST_GAP | divided_by: rden | floor -%}
+        {%- if rcols > LIST_MAX -%}{%- assign rcols = LIST_MAX -%}{%- endif -%}
+        {%- if rcols > sun_count -%}{%- assign rcols = sun_count -%}{%- endif -%}
+        {%- if rcols < 1 -%}{%- assign rcols = 1 -%}{%- endif -%}
+        {%- assign rhead = RF | plus: 3 -%}
+        {%- if rhead > 16 -%}{%- assign rhead = 16 -%}{%- endif -%}
+        {%- if rhead < 12 -%}{%- assign rhead = 12 -%}{%- endif -%}
+        {%- assign rrows = sun_count | plus: rcols | minus: 1 | divided_by: rcols -%}
+        {%- assign need = rrows | times: RF | times: 1.3 -%}
+        {%- assign need = rrows | times: ROW_H | plus: need -%}
+        {%- assign need = rhead | times: 1.2 | plus: need -%}
+        {%- if need <= slot -%}
+          {%- assign sunday_in_rail = true -%}
+          {%- assign sunday_font = RF -%}
+          {%- assign sunday_head = rhead -%}
+          {%- assign sunday_cols = rcols -%}
+          {%- assign sunday_need = need -%}
+        {%- endif -%}
+      {%- endif -%}
+    {%- endunless -%}
+  {%- endfor -%}
+{%- endif -%}
+
+{%- assign rail_h = weather_h -%}
+{%- if sunday_in_rail -%}
+  {%- assign rail_h = rail_h | plus: 16 | plus: sunday_need -%}
+{%- else -%}
+  {%- assign rail_h = rail_h | plus: 16 | plus: bart_h -%}
 {%- endif -%}
 {%- assign rail_spare = budget | minus: rail_h | minus: 16 -%}
 
@@ -118,18 +203,19 @@ at a size worth reading beats one line at a size that isn't.
 Type size is the *last* thing to give, not the first, so at each size the panel
 spends its space before it spends legibility:
 
-  1. plain lists go multi-column, because "Shave" does not need 460px;
-  2. section gaps ride the type size rather than sitting at a flat 10px;
-  3. a checklist moves into the blank space under BART, if that is what makes
-     this size work.
+  1. on a Sunday the checklist is already in the rail, in the slot the
+     departure board would have had — see the rail's own note above;
+  2. plain lists go multi-column, because "Shave" does not need 460px;
+  3. section gaps ride the type size rather than sitting at a flat 10px;
+  4. the End of Month list moves into whatever the rail still has spare, if
+     that is what makes this size work.
 
-Only when all three have been tried does the ladder step down. Order does not
-matter to the arithmetic, only the sum, so the plain lists are counted together
-in one pass ahead of the event sections rather than in reading order.
+Only when all of those have been tried does the ladder step down. Order does
+not matter to the arithmetic, only the sum, so the plain lists are counted
+together in one pass ahead of the event sections rather than in reading order.
 ═════════════════════════════════════════════════════════════════════════════
 {%- endcomment -%}
 {%- assign left_font = 8 -%}
-{%- assign SIZES = '16,15,14,13,12,11,10,9,8' | split: ',' -%}
 {%- for candidate in SIZES -%}
   {%- assign F = candidate | times: 1 -%}
   {%- assign CH = F | times: 0.6 -%}
@@ -145,7 +231,6 @@ in one pass ahead of the event sections rather than in reading order.
   {%- assign body_h = 0 -%}
   {%- assign section_no = 0 -%}
   {%- assign eom_h = 0 -%}
-  {%- assign sun_h = 0 -%}
   {%- assign cols_birthdays = 1 -%}
   {%- assign cols_eom = 1 -%}
   {%- assign cols_sunday = 1 -%}
@@ -157,17 +242,20 @@ in one pass ahead of the event sections rather than in reading order.
   place. --{%- endcomment -%}
   {%- for pass in (1..4) -%}
     {%- assign items = NONE -%}
+    {%- assign widest = 0 -%}
     {%- assign box_w = F | times: 0.8 | plus: ROW_GAP -%}
     {%- case pass -%}
     {%- when 1 -%}
-      {%- assign items = birthdays -%}
+      {%- if bd_count > 0 -%}{%- assign items = birthdays -%}{%- assign widest = bd_widest -%}{%- endif -%}
       {%- assign box_w = 0 -%}
     {%- when 2 -%}
-      {%- if is_last_day_of_month -%}{%- assign items = checklists.end_of_month -%}{%- endif -%}
+      {%- if eom_count > 0 -%}{%- assign items = checklists.end_of_month -%}{%- assign widest = eom_widest -%}{%- endif -%}
     {%- when 3 -%}
-      {%- if is_sunday -%}{%- assign items = checklists.sunday -%}{%- endif -%}
+      {%- unless sunday_in_rail -%}
+        {%- if sun_count > 0 -%}{%- assign items = checklists.sunday -%}{%- assign widest = sun_widest -%}{%- endif -%}
+      {%- endunless -%}
     {%- when 4 -%}
-      {%- assign items = tasks -%}
+      {%- if task_count > 0 -%}{%- assign items = tasks -%}{%- assign widest = task_widest -%}{%- endif -%}
     {%- endcase -%}
     {%- assign item_count = items | size -%}
     {%- if item_count > 0 -%}
@@ -181,11 +269,6 @@ in one pass ahead of the event sections rather than in reading order.
       column is all that fits, and the list only breaks into two or three once
       the type is small enough that a single column would be mostly margin.
       Every item being one line is what makes the height below exact. --{%- endcomment -%}
-      {%- assign widest = 0 -%}
-      {%- for item in items -%}
-        {%- assign item_len = item | size -%}
-        {%- if item_len > widest -%}{%- assign widest = item_len -%}{%- endif -%}
-      {%- endfor -%}
       {%- assign col_den = widest | times: CH | plus: box_w | plus: LIST_GAP -%}
       {%- assign cols = avail | plus: LIST_GAP | divided_by: col_den | floor -%}
       {%- if cols > LIST_MAX -%}{%- assign cols = LIST_MAX -%}{%- endif -%}
@@ -235,10 +318,9 @@ in one pass ahead of the event sections rather than in reading order.
       {%- endfor -%}
       {%- endif -%}
       {%- assign body_h = body_h | plus: sect_h -%}
-      {%- comment -%}-- Remember what the two checklists cost, so the rail can be
-      offered one of them below if the column runs out of room. --{%- endcomment -%}
-      {%- if pass == 2 -%}{%- assign eom_h = sect_h -%}{%- assign eom_widest = widest -%}{%- assign eom_n = item_count -%}{%- endif -%}
-      {%- if pass == 3 -%}{%- assign sun_h = sect_h -%}{%- assign sun_widest = widest -%}{%- assign sun_n = item_count -%}{%- endif -%}
+      {%- comment -%}-- Remember what the End of Month list cost, so the rail can
+      be offered it below if the column runs out of room. --{%- endcomment -%}
+      {%- if pass == 2 -%}{%- assign eom_h = sect_h -%}{%- endif -%}
     {%- endif -%}
   {%- endfor -%}
 
@@ -336,56 +418,54 @@ in one pass ahead of the event sections rather than in reading order.
   every one of its items still holds a single line over there.
   ───────────────────────────────────────────────────────────────────────────
   {%- endcomment -%}
+  {%- comment -%}
+  ─── Spilling into the rail ────────────────────────────────────────────────
+  What is left to place once Sunday has its own slot is the End of Month list,
+  and it goes across only when the column has genuinely run out: after this size
+  has already failed, and only if moving it is what makes the size succeed. A
+  day that did not need it is left alone.
+
+  It takes its own size over there rather than the agenda's. Chores are not
+  schedule, and a step of type spent on them is a step the agenda keeps — which
+  is the whole reason for moving the list.
+  ───────────────────────────────────────────────────────────────────────────
+  {%- endcomment -%}
   {%- assign promote = 0 -%}
-  {%- if body_h > budget -%}
-    {%- assign rail_avail = RIGHT_W | minus: INDENT -%}
-    {%- for candidate_list in (2..3) -%}
-      {%- if promote == 0 -%}
-        {%- if candidate_list == 2 -%}
-          {%- assign cand_h = eom_h -%}{%- assign cand_widest = eom_widest -%}{%- assign cand_n = eom_n -%}
-        {%- else -%}
-          {%- assign cand_h = sun_h -%}{%- assign cand_widest = sun_widest -%}{%- assign cand_n = sun_n -%}
-        {%- endif -%}
-        {%- assign trial = body_h | minus: cand_h -%}
-        {%- if cand_h > 0 and trial <= budget -%}
-          {%- comment -%}-- The list takes its own size over there rather than
-          the agenda's. It is chores, not schedule, and a step of type spent
-          here is a step the agenda does not have to spend — which is the whole
-          reason for moving it. Largest that fits the spare wins, and it never
-          exceeds the agenda's own. --{%- endcomment -%}
-          {%- for rail_size in SIZES -%}
-            {%- assign RF = rail_size | times: 1 -%}
-            {%- if promote == 0 and RF <= F -%}
-              {%- assign rail_ch = RF | times: 0.6 -%}
-              {%- assign rail_box = RF | times: 0.8 | plus: ROW_GAP -%}
-              {%- assign cand_w = cand_widest | times: rail_ch | plus: rail_box -%}
-              {%- if cand_w <= rail_avail -%}
-                {%- assign rden = cand_w | plus: LIST_GAP -%}
-                {%- assign rcols = rail_avail | plus: LIST_GAP | divided_by: rden | floor -%}
-                {%- if rcols > LIST_MAX -%}{%- assign rcols = LIST_MAX -%}{%- endif -%}
-                {%- if rcols > cand_n -%}{%- assign rcols = cand_n -%}{%- endif -%}
-                {%- if rcols < 1 -%}{%- assign rcols = 1 -%}{%- endif -%}
-                {%- assign rhead = RF | plus: 3 -%}
-                {%- if rhead > 16 -%}{%- assign rhead = 16 -%}{%- endif -%}
-                {%- if rhead < 12 -%}{%- assign rhead = 12 -%}{%- endif -%}
-                {%- assign rrows = cand_n | plus: rcols | minus: 1 | divided_by: rcols -%}
-                {%- assign rail_need = rrows | times: RF | times: 1.3 -%}
-                {%- assign rail_need = rrows | times: ROW_H | plus: rail_need -%}
-                {%- assign rail_need = rhead | times: 1.2 | plus: rail_need -%}
-                {%- if rail_need <= rail_spare -%}
-                  {%- assign promote = candidate_list -%}
-                  {%- assign promote_cols = rcols -%}
-                  {%- assign promote_font = RF -%}
-                  {%- assign promote_head = rhead -%}
-                  {%- assign body_h = trial -%}
-                  {%- assign section_no = section_no | minus: 1 -%}
-                {%- endif -%}
+  {%- if body_h > budget and eom_h > 0 -%}
+    {%- assign trial = body_h | minus: eom_h -%}
+    {%- if trial <= budget -%}
+      {%- for rail_size in SIZES -%}
+        {%- if promote == 0 -%}
+          {%- assign RF = rail_size | times: 1 -%}
+          {%- if RF <= F -%}
+            {%- assign item_w = eom_widest | times: RF | times: 0.6 -%}
+            {%- assign item_w = RF | times: 0.8 | plus: ROW_GAP | plus: item_w -%}
+            {%- if item_w <= rail_avail -%}
+              {%- assign rden = item_w | plus: LIST_GAP -%}
+              {%- assign rcols = rail_avail | plus: LIST_GAP | divided_by: rden | floor -%}
+              {%- if rcols > LIST_MAX -%}{%- assign rcols = LIST_MAX -%}{%- endif -%}
+              {%- if rcols > eom_count -%}{%- assign rcols = eom_count -%}{%- endif -%}
+              {%- if rcols < 1 -%}{%- assign rcols = 1 -%}{%- endif -%}
+              {%- assign rhead = RF | plus: 3 -%}
+              {%- if rhead > 16 -%}{%- assign rhead = 16 -%}{%- endif -%}
+              {%- if rhead < 12 -%}{%- assign rhead = 12 -%}{%- endif -%}
+              {%- assign rrows = eom_count | plus: rcols | minus: 1 | divided_by: rcols -%}
+              {%- assign need = rrows | times: RF | times: 1.3 -%}
+              {%- assign need = rrows | times: ROW_H | plus: need -%}
+              {%- assign need = rhead | times: 1.2 | plus: need -%}
+              {%- if need <= rail_spare -%}
+                {%- assign promote = 2 -%}
+                {%- assign promote_cols = rcols -%}
+                {%- assign promote_font = RF -%}
+                {%- assign promote_head = rhead -%}
+                {%- assign body_h = trial -%}
+                {%- assign section_no = section_no | minus: 1 -%}
               {%- endif -%}
             {%- endif -%}
-          {%- endfor -%}
+          {%- endif -%}
         {%- endif -%}
-      {%- endif -%}
-    {%- endfor -%}
+      {%- endfor -%}
+    {%- endif -%}
   {%- endif -%}
 
   {%- assign left_font = F -%}
@@ -468,9 +548,7 @@ in one pass ahead of the event sections rather than in reading order.
         </div>
       </div>
       {% endfor %}
-      {% if is_last_day_of_month and promote != 2 %}
-      {% assign eom_count = checklists.end_of_month | size %}
-      {% if eom_count != 0 %}
+      {% if eom_count != 0 and promote != 2 %}
       <div>
         <div class="label" style="display: block; margin: 0; padding: 0; font-size: {{ head_font }}px; line-height: 1.2;">End of Month Checklist</div>
         <div style="padding-left: {{ INDENT }}px;{% if cols_eom > 1 %} column-count: {{ cols_eom }}; column-gap: {{ LIST_GAP }}px;{% endif %}">
@@ -483,9 +561,7 @@ in one pass ahead of the event sections rather than in reading order.
         </div>
       </div>
       {% endif %}
-      {% endif %}
-      {% if is_sunday and promote != 3 %}
-      {% assign sun_count = checklists.sunday | size %}
+      {% unless sunday_in_rail %}
       {% if sun_count != 0 %}
       <div>
         <div class="label" style="display: block; margin: 0; padding: 0; font-size: {{ head_font }}px; line-height: 1.2;">Sunday Checklist</div>
@@ -499,8 +575,7 @@ in one pass ahead of the event sections rather than in reading order.
         </div>
       </div>
       {% endif %}
-      {% endif %}
-      {% assign task_count = tasks | size %}
+      {% endunless %}
       {% if task_count != 0 %}
       <div>
         <div class="label" style="display: block; margin: 0; padding: 0; font-size: {{ head_font }}px; line-height: 1.2;">Tasks</div>
@@ -555,6 +630,22 @@ in one pass ahead of the event sections rather than in reading order.
           {% endif %}
         </div>
       </div>
+      {% if sunday_in_rail %}
+      {% comment %}-- Sunday takes the departure board's place. Nobody is
+      catching a train to work, and the eight chores were the thing bending the
+      agenda out of shape. --{% endcomment %}
+      <div style="font-family: monospace; font-size: {{ sunday_font }}px; line-height: 1.3; white-space: normal;">
+        <div class="label" style="display: block; margin: 0; padding: 0; font-size: {{ sunday_head }}px; line-height: 1.2;">Sunday Checklist</div>
+        <div style="padding-left: {{ INDENT }}px;{% if sunday_cols > 1 %} column-count: {{ sunday_cols }}; column-gap: {{ LIST_GAP }}px;{% endif %}">
+          {% for item in checklists.sunday %}
+          <div style="display: flex; align-items: baseline; gap: {{ ROW_GAP }}px; padding: 1px 0; border-bottom: 1px dashed #999; font-weight: normal; break-inside: avoid;">
+            <span style="display: inline-block; box-sizing: border-box; width: 0.8em; height: 0.8em; border: 0.13em solid black; border-radius: 0.13em; flex-shrink: 0; align-self: flex-start; margin-top: 0.3em;"></span>
+            <span style="flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere;">{{ item }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% else %}
       <div>
         <div class="label" style="display: block; margin: 0; padding: 0; line-height: 1.2;">BART</div>
         {% comment %}-- Sized to its own widest line — the two station names — rather
@@ -581,16 +672,17 @@ in one pass ahead of the event sections rather than in reading order.
           {% endif %}
         </div>
       </div>
+      {% endif %}
       {% if promote != 0 %}
-      {% comment %}-- A checklist the column could not hold, taking the blank
-      space under BART rather than dragging the whole agenda down a size with
-      it. Sized to the space it landed in, which is why it can sit a step below
-      the agenda: chores are the thing worth spending that step on. --{% endcomment %}
+      {% comment %}-- The End of Month list, which the column could not hold,
+      taking the blank space at the foot of the rail rather than dragging the
+      whole agenda down a size with it. Sized to the space it landed in, which
+      is why it can sit a step below the agenda: chores are the thing worth
+      spending that step on. --{% endcomment %}
       <div style="font-family: monospace; font-size: {{ promote_font }}px; line-height: 1.3; white-space: normal;">
-        <div class="label" style="display: block; margin: 0; padding: 0; font-size: {{ promote_head }}px; line-height: 1.2;">{% if promote == 2 %}End of Month{% else %}Sunday{% endif %} Checklist</div>
+        <div class="label" style="display: block; margin: 0; padding: 0; font-size: {{ promote_head }}px; line-height: 1.2;">End of Month Checklist</div>
         <div style="padding-left: {{ INDENT }}px;{% if promote_cols > 1 %} column-count: {{ promote_cols }}; column-gap: {{ LIST_GAP }}px;{% endif %}">
-          {% if promote == 2 %}{% assign promoted_items = checklists.end_of_month %}{% else %}{% assign promoted_items = checklists.sunday %}{% endif %}
-          {% for item in promoted_items %}
+          {% for item in checklists.end_of_month %}
           <div style="display: flex; align-items: baseline; gap: {{ ROW_GAP }}px; padding: 1px 0; border-bottom: 1px dashed #999; font-weight: normal; break-inside: avoid;">
             <span style="display: inline-block; box-sizing: border-box; width: 0.8em; height: 0.8em; border: 0.13em solid black; border-radius: 0.13em; flex-shrink: 0; align-self: flex-start; margin-top: 0.3em;"></span>
             <span style="flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere;">{{ item }}</span>
