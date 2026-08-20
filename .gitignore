@@ -16,11 +16,6 @@ events/filters/.csc-cache.json
 # and run; keep it as a private scratch area for notes on their way to the vault.
 events/vault-notes/
 
-# The plugin definition trmnlp pushes. Its polling_headers carry the shared
-# secret the polling URL is gated on, and this repo is public, so the real file
-# stays out and ./setup builds it from the .example plus a token in .env.
-plugin/src/settings.yml
-
 # Private calendar/filter configs (real feed URLs, ignore globs). Auto-ignore
 # any events/*.conf so new ones can't be committed by accident; keep examples.
 events/*.conf
