@@ -28,7 +28,8 @@ Everything below is measured off the rendered 800×480 page, not guessed:
   RAIL_H    312  the rail is fixed-format, so its height is arithmetic rather
                  than a fit — see the sum below. What it does not use is panel
                  the agenda can borrow before it starts shrinking, and on a
-                 Sunday the departure board's whole share of it comes free.
+                 Sunday the departure board's whole 178px share of it is free
+                 whatever else happens, because the board is not drawn.
   ROW_H       3  1px padding above and below each row, plus its 1px rule
   BOX_W   0.8em  the checkbox, which is sized in ems so it stays in proportion
                  to the line it sits on, plus the ROW_GAP after it
@@ -106,15 +107,17 @@ the Berkeley Marina wind sub-line 15.6, the station header 19.6, a `.label`
 measured.
 
 On a Sunday the departure board is not telling anyone anything — there is no
-commute to catch — so the Sunday checklist takes that slot instead. It is the
-better trade twice over: the chores are legible at a size of their own, and the
-agenda gets back the eight rows and a heading that were crushing it, which is
-most of why Sunday used to be the worst-set day of the week.
+commute to catch — so it is not drawn, and the Sunday checklist takes its slot.
+That is the better trade twice over: the chores are legible at a size of their
+own, and the agenda gets back the eight rows and a heading that were crushing
+it, which is most of why Sunday used to be the worst-set day of the week.
 
+The board's absence is unconditional; the checklist taking its place is not.
 The list has to hold a full line per item over there for the height below to be
-exact, so if some future checklist entry is too long for 240px the slot goes
-back to being BART and the list stays in the column. That is a safety net, not
-a mode: it needs an item past about forty characters to fire.
+exact, so an entry too long for 240px leaves the list in the column — as does a
+Sunday with nothing else on it, since chores beside "Nothing on the docket!" are
+a worse use of 472px than chores in it. Either way the rail is weather alone
+and the day still reads; both need a checklist the current one is nowhere near.
 ═════════════════════════════════════════════════════════════════════════════
 {%- endcomment -%}
 {%- assign rail_avail = RIGHT_W | minus: INDENT -%}
@@ -174,7 +177,7 @@ a worse use of 472px than just putting the chores in it. --{%- endcomment -%}
 {%- assign rail_h = weather_h -%}
 {%- if sunday_in_rail -%}
   {%- assign rail_h = rail_h | plus: 16 | plus: sunday_need -%}
-{%- else -%}
+{%- elsif is_sunday == false -%}
   {%- assign rail_h = rail_h | plus: 16 | plus: bart_h -%}
 {%- endif -%}
 {%- assign rail_spare = budget | minus: rail_h | minus: 16 -%}
@@ -203,8 +206,8 @@ at a size worth reading beats one line at a size that isn't.
 Type size is the *last* thing to give, not the first, so at each size the panel
 spends its space before it spends legibility:
 
-  1. on a Sunday the checklist is already in the rail, in the slot the
-     departure board would have had — see the rail's own note above;
+  1. on a Sunday there is no departure board, and the checklist has usually
+     already taken its slot — see the rail's own note above;
   2. plain lists go multi-column, because "Shave" does not need 460px;
   3. section gaps ride the type size rather than sitting at a flat 10px;
   4. the End of Month list moves into whatever the rail still has spare, if
@@ -645,7 +648,8 @@ together in one pass ahead of the event sections rather than in reading order.
           {% endfor %}
         </div>
       </div>
-      {% else %}
+      {% endif %}
+      {% unless is_sunday %}
       <div>
         <div class="label" style="display: block; margin: 0; padding: 0; line-height: 1.2;">BART</div>
         {% comment %}-- Sized to its own widest line — the two station names — rather
@@ -672,7 +676,7 @@ together in one pass ahead of the event sections rather than in reading order.
           {% endif %}
         </div>
       </div>
-      {% endif %}
+      {% endunless %}
       {% if promote != 0 %}
       {% comment %}-- The End of Month list, which the column could not hold,
       taking the blank space at the foot of the rail rather than dragging the
