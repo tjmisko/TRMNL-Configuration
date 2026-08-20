@@ -161,6 +161,24 @@ echo "y" | docker run -i \
   trmnl/trmnlp push
 ```
 
+> **`trmnlp pull` goes the other way, and it does not merge.** It overwrites
+> `src/` with whatever is on TRMNL's servers — including `full.liquid`. If the
+> server's copy is older than yours (it usually is, since the server only changes
+> when you push), pulling silently reverts your markup to the last pushed
+> version. `git checkout` gets it back, but there is no prompt beyond a generic
+> "local plugin files will be overwritten".
+>
+> Pull is for recovering settings edited through the web UI, and for that it is
+> worth doing into a scratch directory first:
+>
+> ```sh
+> mkdir -p /tmp/pullcheck/src && cp plugin/src/settings.yml /tmp/pullcheck/src/
+> echo y | docker run --rm -i \
+>   --volume ~/.config/trmnlp:/root/.config/trmnlp \
+>   --volume /tmp/pullcheck:/plugin trmnl/trmnlp pull
+> diff plugin/src/settings.yml /tmp/pullcheck/src/settings.yml
+> ```
+
 ### 4. Authenticate (one-time)
 
 ```sh
