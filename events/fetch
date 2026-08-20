@@ -14,9 +14,20 @@
 # (in $EVENTS_TZ); drop any whose title matches a glob in events/ignore.conf;
 # assign each event its display tag from events/tags.conf; run every enabled
 # filter over the tagged list; then sort (by tag, then all-day first, then start
-# time, then title) and collapse exact duplicates (same title + start, e.g. an
-# event cross-posted to two calendars). Genuine conflicts at different times are
-# kept on purpose.
+# time, then title), collapse exact duplicates (same title + start, e.g. an
+# event cross-posted to two calendars), and split the day into the dashboard
+# sections tags.conf asked for. Genuine conflicts at different times are kept on
+# purpose.
+#
+# The output is an array of SECTIONS rather than of events:
+#
+#   [ { "heading": "Dance",  "tagged": false, "events": [ ... ] },
+#     { "heading": "Events", "tagged": true,  "events": [ ... ] } ]
+#
+# `tagged` says whether the section's rows carry their tag as a label — the
+# single "Events" section holds every tag that is not a heading of its own, so
+# it is the only one that does. Stages still speak flat arrays among themselves;
+# only this last step groups.
 #
 # Tagging happens BEFORE the filters so a filter can act on a tag: that is how
 # filters/tides finds the sailing events it needs to reconcile with the tide.
@@ -79,20 +90,32 @@ stage_enabled() {
   [[ "${STAGE_SETTING[$1]:-on}" == on ]]
 }
 
-# ── Tag rules (events/tags.conf) ────────────────────────────────────
-# "<Tag> <kind>:<glob>", where <kind> is tag / source / title — the three
-# provenances a tag can come from (a note's own frontmatter tags, the calendar
-# or adapter it arrived from, or its title). Rules are handed to jq as a TSV of
-# "<Tag>\t<kind>\t<regex>" lines in file order: first match wins, and the order
-# tags first appear here is the order they appear on screen.
+# ── Tag rules and headings (events/tags.conf) ───────────────────────
+# Two kinds of line, both "<Tag>  <something>":
+#
+#   <Tag>  <kind>:<glob>   a rule — how an event earns this tag, where <kind>
+#                          is tag / source / title: the three provenances a tag
+#                          can come from (a note's own frontmatter tags, the
+#                          calendar or adapter it arrived from, or its title).
+#   <Tag>  heading         a declaration — give this tag its own section on the
+#                          dashboard instead of a label at the head of each row.
+#
+# Both are handed to jq as a TSV of "<Tag>\t<kind>\t<regex>" lines in file
+# order. Among rules, first match wins. A `heading` line can never match an
+# event; it declares presentation, and — by being an appearance of the tag —
+# where that tag sits in the order everything on screen is arranged by.
 TAG_RULES=""
 TAGS_FILE="${EVENTS_TAGS_FILE:-$SCRIPT_DIR/tags.conf}"
 if [[ -f "$TAGS_FILE" ]]; then
   # `read -r label matcher` puts the whole remainder in $matcher, so a title
   # glob may contain spaces ("Sailing  title:Cal Sailing*").
   while read -r label matcher; do
+    if [[ "$matcher" == heading ]]; then
+      TAG_RULES+=$(printf '%s\theading\t' "$label")$'\n'
+      continue
+    fi
     if [[ "$matcher" != *:?* ]]; then
-      printf 'events/fetch: tags.conf: %s: expected <kind>:<glob>, got %s\n' \
+      printf 'events/fetch: tags.conf: %s: expected heading or <kind>:<glob>, got %s\n' \
         "$label" "${matcher:-nothing}" >&2
       continue
     fi
@@ -150,7 +173,7 @@ all=$(printf '%s' "$all" | jq --arg today "$EVENTS_TODAY" --arg re "$IGNORE_RE" 
     | gsub("\\s+"; " ") | sub("^ +"; "") | sub(" +$"; "");
 
   ($rules | split("\n") | map(select(length > 0) | split("\t"))
-          | map({tag: .[0], kind: .[1], regex: .[2]})) as $rule
+          | map({tag: .[0], kind: .[1], regex: (.[2] // "")})) as $rule
 
   # On-screen tag order is first appearance in tags.conf, with the implicit
   # "Other" bucket last unless the file placed it somewhere itself.
@@ -202,13 +225,45 @@ for stage in "${!STAGE_SETTING[@]}"; do
   printf 'events/fetch: sources.conf: %s matches no source or filter\n' "$stage" >&2
 done
 
-# ── Sort and de-duplicate ───────────────────────────────────────────
-# tag_rank is scaffolding for the sort; the device only ever sees `tag`.
-printf '%s' "$all" | jq '
-  sort_by([(.tag_rank // 9999), (.all_day | not), .sort, .title])
+# ── Sort, de-duplicate, and split into sections ─────────────────────
+# The dashboard's left column is a stack of sections, and a tag declared
+# `heading` in tags.conf is one. Everything else shares the single "Events"
+# section, where the tag renders as a label on each row instead.
+printf '%s' "$all" | jq --arg rules "$TAG_RULES" '
+  ($rules | split("\n") | map(select(length > 0) | split("\t"))
+          | map({tag: .[0], kind: .[1]})) as $rule
+
+  # The same declared order pass one ranked events against.
+  | (reduce $rule[] as $r ([]; if index($r.tag) then . else . + [$r.tag] end)
+     | if index("Other") then . else . + ["Other"] end) as $order
+  | ([$rule[] | select(.kind == "heading") | .tag] | unique) as $headings
+
+  # Sort and de-duplicate the whole day first. Ordering is a property of the
+  # day rather than of a section, and an event cross-posted to two calendars
+  # has to collapse before it can be filed anywhere. tag_rank is scaffolding
+  # for that sort; the device only ever sees `tag`.
+  | sort_by([(.tag_rank // 9999), (.all_day | not), .sort, .title])
   | reduce .[] as $e ({seen: {}, out: []};
       ($e.date + "|" + ($e.start // "all-day") + "|" + $e.title) as $k
       | if .seen[$k] then . else .seen[$k] = true | .out += [$e] end)
   | .out
-  | map(del(.tag_rank))
+  | map(del(.tag_rank)) as $events
+
+  # Walk the declared order once. A heading tag becomes its own section right
+  # where it was declared, so moving its line in tags.conf moves the section.
+  # Every other tag renders as a label inside "Events", which therefore sits at
+  # the rank of the first such tag. A section with nothing in it today is left
+  # out entirely, the way Birthdays is.
+  | ([$order[] | . as $t | select($headings | index($t) | not)] | first) as $first_label
+  | [ $order[]
+      | . as $t
+      | if ($headings | index($t)) then
+          {heading: $t, tagged: false, events: [$events[] | select(.tag == $t)]}
+        elif $t == $first_label then
+          {heading: "Events", tagged: true,
+           events: [$events[] | . as $e | select($headings | index($e.tag) | not)]}
+        else empty
+        end
+    ]
+  | map(select(.events | length > 0))
 '

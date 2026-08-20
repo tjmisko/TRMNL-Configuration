@@ -4,10 +4,10 @@
 # the list by tag before time, so a glance tells you which part of your life an
 # event belongs to. This file defines both the tag vocabulary and its order.
 #
-# Format: one rule per line, "<Tag>  <matcher>" (whitespace-separated).
+# Format: one line per rule or declaration, "<Tag>  <something>".
 #
-#   <Tag>       the label shown on the device, verbatim (rendered uppercase).
-#   <matcher>   one of three provenances:
+# A RULE says how an event earns a tag: "<Tag>  <kind>:<glob>", where <kind> is
+# one of three provenances:
 #
 #     tag:<name>       the event carries <name> in its own tags — the
 #                      `tags:` frontmatter of a vault note (case-insensitive).
@@ -20,21 +20,34 @@
 # Rules are evaluated top to bottom and the FIRST match wins, so order is
 # precedence. An event matching no rule is tagged "Other".
 #
-# Tag ORDER on screen is the order tags first appear below; "Other" always
-# sorts last. Within a tag, events stay in time order (all-day first).
+# A DECLARATION says how a tag is presented: "<Tag>  heading" gives that tag its
+# own section on the dashboard — a heading of its own, like Birthdays, with no
+# tag on its rows, since the heading already says it. Every tag without such a
+# line shares the single "Events" section, where its name leads each row in
+# bold. A `heading` line never matches an event; it only declares presentation.
+#
+# ORDER on screen is the order tags first appear below, declarations included,
+# with "Other" last. A heading tag's section sits where its tag first appears,
+# and the "Events" section sits where the first non-heading tag appears — so
+# moving a block in this file moves it on the dashboard. Within a section,
+# events stay in time order (all-day first).
 #
 # `*` matches any run of characters, `?` a single character; everything else is
 # matched literally. '#' comments and blank lines are ignored.
+
+# ── Dance ──────────────────────────────────────────────────────────
+# A section of its own, and declared first, so the dance socials sit directly
+# under Birthdays and above Events.
+#
+# Provenance: frontmatter. The dance socials live in the notes vault and each
+# note is tagged `dance`, so the schedule and the tag travel together.
+Dance     heading
+Dance     tag:dance
 
 # ── Commons ────────────────────────────────────────────────────────
 # Provenance: the calendar. Everything on The Commons' Luma feed is Commons,
 # whatever it happens to be called.
 Commons   source:the-commons
-
-# ── Dance ──────────────────────────────────────────────────────────
-# Provenance: frontmatter. The dance socials live in the notes vault and each
-# note is tagged `dance`, so the schedule and the tag travel together.
-Dance     tag:dance
 
 # ── Sailing ────────────────────────────────────────────────────────
 # Provenance: scheduling. The Cal Sailing lesson days are vault notes tagged

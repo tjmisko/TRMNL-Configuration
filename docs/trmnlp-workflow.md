@@ -59,7 +59,7 @@ These variables are available in `full.liquid` via the polled `trmnl.json`:
 | `weather.uv` | object | `{"max": 7, "band": "High", "peak": "14:00"}`; `null` when the UV lookup fails |
 | `birthdays` | array | List of people with birthdays today |
 | `tasks` | array | Tasks due today |
-| `events` | array | Today's events, blended from `events/sources/*`, tagged and grouped by `events/tags.conf` (see `events/README.md`) |
+| `events` | array | Today's events as dashboard **sections**, `[{heading, tagged, events}]`, blended from `events/sources/*` and split by `events/tags.conf` (see `events/README.md`) |
 | `checklists.sunday` | array | Sunday checklist items |
 | `checklists.end_of_month` | array | End-of-month checklist items |
 | `rain_alert.active` | boolean | `true` if rain is forecast in either city |
