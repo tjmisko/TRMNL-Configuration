@@ -39,6 +39,31 @@ else
   echo ".env already exists, skipping"
 fi
 
+# ── 2a. Build the plugin definition from its example ────────────────
+# plugin/src/settings.yml is what `trmnlp push` uploads, and its polling_headers
+# carry the shared secret the polling URL is gated on. This repo is public, so
+# the real file is gitignored and built here instead. Only pushing and live
+# polling need the token — `./trmnlp serve` points the plugin at a local copy of
+# trmnl.json — so a missing one leaves the placeholder rather than failing.
+#
+# Seeded from the document marker down, so the example's own explanation of
+# itself stays out of the file that gets uploaded.
+if [[ ! -f plugin/src/settings.yml ]]; then
+  sed -n '/^---$/,$p' plugin/src/settings.yml.example > plugin/src/settings.yml
+  TRMNL_PLUGIN_TOKEN=""
+  # shellcheck disable=SC1091
+  source .env 2>/dev/null || true
+  if [[ -n "${TRMNL_PLUGIN_TOKEN:-}" ]]; then
+    sed -i "s|REPLACE_WITH_TRMNL_PLUGIN_TOKEN|$TRMNL_PLUGIN_TOKEN|" plugin/src/settings.yml
+    echo "plugin/src/settings.yml created, token filled in from .env"
+  else
+    echo "plugin/src/settings.yml created — set TRMNL_PLUGIN_TOKEN in .env before ./trmnlp push"
+  fi
+  sed -i 's/\r$//' plugin/src/settings.yml
+else
+  echo "plugin/src/settings.yml already exists, skipping"
+fi
+
 # ── 3. Fetch BART static GTFS data ──────────────────────────────────
 echo "Checking BART static GTFS data..."
 BART/refresh-gtfs --if-stale
