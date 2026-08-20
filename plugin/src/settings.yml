@@ -10,5 +10,26 @@ polling_url: https://retend.app/trmnl.json
 polling_headers: content-type=application/json&x-plugin-token=7a6d84c0b645fcca0fcf636797f9259810befb3ddfebfda5aafa7ca1b0413ec4
 polling_body: ''
 id: 243914
+oauth_enabled: 'false'
+oauth_pkce_enabled: 'no'
+oauth_authorize_url: ''
+oauth_token_url: ''
+oauth_scopes: ''
+oauth_scope_separator: ''
+oauth_refresh_url: ''
+oauth_auth_params: ''
+oauth_token_headers: ''
+oauth_token_site: ''
+oauth_token_params: ''
+oauth_token_request_auth_method: ''
+oauth_body_format: ''
+oauth_token_response_metadata: ''
+oauth_authorization_method: ''
+oauth_refresh_params: ''
+oauth_token_field_name: ''
+oauth_expiry_field_name: ''
+oauth_expiry_strategy: ''
+oauth_fixed_expiry_ms: ''
 name: TRMNL Smartscreen
+description:
 refresh_interval: 15
