@@ -336,12 +336,22 @@ whose `week` is entirely unrecognized shows on **no** day and warns on stderr, s
 a typo hides the event rather than firing it on the wrong weeks. `weeks:` works
 as an alias, mirroring `weekday:`/`weekdays:`.
 
-Notes ready to copy into the vault live in **`events/vault-notes/`**, which is
-also the fixture directory for `events/recurring_test.sh` (`./events/recurring_test.sh`
-asserts the exact set of titles emitted on ~20 dates). The tests drive the
-adapter through `$EVENTS_TODAY`, which now also determines the weekday and the
-week-of-month — a caller-supplied `NOTES_DIRECTORY`/`EVENTS_TZ`/`EVENTS_TODAY`
-takes precedence over `.env`.
+Your actual notes live in your vault and nowhere else — a real schedule says what
+you do, when, and where, and this repo is public. What ships here is
+**`events/testdata/vault/`**: synthetic notes named for the rule each one
+exercises (`First And Third Saturday`, `Afternoon Class`), which are the fixture
+for `events/recurring_test.sh` (`./events/recurring_test.sh` asserts the exact
+set of titles emitted on ~25 dates, plus the resolved times on six). Copy one as
+a starting point for a note of your own.
+
+The tests drive the adapter through `$EVENTS_TODAY`, which also determines the
+weekday and the week-of-month — a caller-supplied
+`NOTES_DIRECTORY`/`EVENTS_TZ`/`EVENTS_TODAY` takes precedence over `.env`, so
+`NOTES_DIRECTORY=~/Notes events/recurring_test.sh` points the same cases at a
+real vault.
+
+`events/vault-notes/` is gitignored. Keep it as a private scratch area for notes
+on their way into the vault if you find it useful; nothing reads it.
 
 ## Sailing times and the tide (`filters/tides`)
 
@@ -352,9 +362,11 @@ split is the point:
 
 - **The schedule lives in the notes vault.** Three notes tagged `event`,
   `recurring`, `sailing` — Monday, Thursday, Saturday — hold the *nominal*
-  lesson windows, exactly like every other recurring note. Copies ready for the
-  vault are in [`events/vault-notes/sailing/`](vault-notes/). Change when you
-  sail by editing a note; no code, no redeploy.
+  lesson windows, exactly like every other recurring note — see
+  [Recurring-event notes](#recurring-event-notes) for the frontmatter, and
+  `events/testdata/vault/Afternoon Class.md` for one shaped the same way, right
+  down to the seasonal window. Change when you sail by editing a note; no code,
+  no redeploy.
 - **The water lives in this repo.** `events/tides/` (Go, stdlib only) builds to
   `events/filters/tides`, which rewrites those notes' times to what the tide
   actually allows.

@@ -73,7 +73,7 @@ fi
 
 # ── 3b3. Retire the old CSC events source ───────────────────────────
 # The Cal Sailing event used to be a source adapter reading csc-lessons.conf;
-# it is now a vault note (events/vault-notes/sailing) plus the tides filter. An
+# it is now a vault note (tagged event/recurring/sailing) plus the tides filter. An
 # old binary left behind in sources/ would keep emitting a second, un-clamped
 # copy of the event, so clear it out — and carry its cached club hours over so
 # the first run after upgrading doesn't have to hit the network.
@@ -88,7 +88,8 @@ fi
 rm -f events/sources/.csc-cache.json
 if [[ -f events/csc-lessons.conf ]]; then
   echo "Note: events/csc-lessons.conf is no longer read — the lesson schedule now"
-  echo "      lives in your vault (copy events/vault-notes/sailing/*.md into it)."
+  echo "      lives in your vault as notes tagged event/recurring/sailing."
+  echo "      See 'Sailing times and the tide' in events/README.md."
 fi
 
 # ── 3c. Seed events config files from their examples ────────────────
