@@ -1,0 +1,46 @@
+# events/tags.conf — how each event gets its display tag.
+#
+# The dashboard prints one bold tag at the head of every event row, and sorts
+# the list by tag before time, so a glance tells you which part of your life an
+# event belongs to. This file defines both the tag vocabulary and its order.
+#
+# Format: one rule per line, "<Tag>  <matcher>" (whitespace-separated).
+#
+#   <Tag>       the label shown on the device, verbatim (rendered uppercase).
+#   <matcher>   one of three provenances:
+#
+#     tag:<name>       the event carries <name> in its own tags — the
+#                      `tags:` frontmatter of a vault note (case-insensitive).
+#     source:<glob>    the event came from this source: an adapter name
+#                      (`recurring`) or a feed label from events/feeds.conf
+#                      (`the-commons`).
+#     title:<glob>     the event's title matches this glob (case-insensitive).
+#                      The catch-all for calendars that tag nothing themselves.
+#
+# Rules are evaluated top to bottom and the FIRST match wins, so order is
+# precedence. An event matching no rule is tagged "Other".
+#
+# Tag ORDER on screen is the order tags first appear below; "Other" always
+# sorts last. Within a tag, events stay in time order (all-day first).
+#
+# `*` matches any run of characters, `?` a single character; everything else is
+# matched literally. '#' comments and blank lines are ignored.
+
+# ── Commons ────────────────────────────────────────────────────────
+# Provenance: the calendar. Everything on The Commons' Luma feed is Commons,
+# whatever it happens to be called.
+Commons   source:the-commons
+
+# ── Dance ──────────────────────────────────────────────────────────
+# Provenance: frontmatter. The dance socials live in the notes vault and each
+# note is tagged `dance`, so the schedule and the tag travel together.
+Dance     tag:dance
+
+# ── Sailing ────────────────────────────────────────────────────────
+# Provenance: scheduling. The Cal Sailing lesson days are vault notes tagged
+# `sailing`, whose times the tides filter rewrites from the club's live hours.
+Sailing   tag:sailing
+# ...and a safety net for a sailing event arriving from a calendar instead.
+Sailing   title:*Cal Sailing*
+
+# Anything unmatched falls through to "Other".

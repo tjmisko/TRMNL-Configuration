@@ -61,13 +61,34 @@ else
   echo "ICS binary is up to date"
 fi
 
-# ── 3b2. Build CSC open/close events binary ─────────────────────────
-if [[ ! -f events/sources/csc || events/csc/csc.go -nt events/sources/csc ]]; then
-  echo "Building CSC events binary..."
-  (cd -- events/csc && go build -o ../sources/csc .)
-  echo "CSC built"
+# ── 3b2. Build tides events filter ──────────────────────────────────
+mkdir -p events/filters
+if [[ ! -f events/filters/tides || events/tides/tides.go -nt events/filters/tides ]]; then
+  echo "Building tides events filter..."
+  (cd -- events/tides && go build -o ../filters/tides .)
+  echo "Tides filter built"
 else
-  echo "CSC binary is up to date"
+  echo "Tides filter is up to date"
+fi
+
+# ── 3b3. Retire the old CSC events source ───────────────────────────
+# The Cal Sailing event used to be a source adapter reading csc-lessons.conf;
+# it is now a vault note (events/vault-notes/sailing) plus the tides filter. An
+# old binary left behind in sources/ would keep emitting a second, un-clamped
+# copy of the event, so clear it out — and carry its cached club hours over so
+# the first run after upgrading doesn't have to hit the network.
+if [[ -f events/sources/csc ]]; then
+  rm -f events/sources/csc
+  echo "Removed the retired events/sources/csc adapter"
+fi
+if [[ -f events/sources/.csc-cache.json && ! -f events/filters/.csc-cache.json ]]; then
+  mv events/sources/.csc-cache.json events/filters/.csc-cache.json
+  echo "Moved the cached Cal Sailing hours to events/filters/"
+fi
+rm -f events/sources/.csc-cache.json
+if [[ -f events/csc-lessons.conf ]]; then
+  echo "Note: events/csc-lessons.conf is no longer read — the lesson schedule now"
+  echo "      lives in your vault (copy events/vault-notes/sailing/*.md into it)."
 fi
 
 # ── 3c. Seed events config files from their examples ────────────────
@@ -85,11 +106,18 @@ else
   echo "events/ignore.conf already exists, skipping"
 fi
 
-if [[ ! -f events/csc-lessons.conf ]]; then
-  cp events/csc-lessons.conf.example events/csc-lessons.conf
-  echo "events/csc-lessons.conf created — set your Cal Sailing lesson windows by weekday"
+if [[ ! -f events/tags.conf ]]; then
+  cp events/tags.conf.example events/tags.conf
+  echo "events/tags.conf created — edit it to change the event tags and their order"
 else
-  echo "events/csc-lessons.conf already exists, skipping"
+  echo "events/tags.conf already exists, skipping"
+fi
+
+if [[ ! -f events/sources.conf ]]; then
+  cp events/sources.conf.example events/sources.conf
+  echo "events/sources.conf created — switch individual event sources on and off there"
+else
+  echo "events/sources.conf already exists, skipping"
 fi
 
 # ── 4. Ensure scripts are executable ────────────────────────────────

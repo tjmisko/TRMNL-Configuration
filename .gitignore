@@ -7,8 +7,9 @@ BART/bart
 # it is downloaded by BART/refresh-gtfs rather than committed.
 BART/bart_gtfs/
 events/sources/ics
-events/sources/csc
-events/sources/.csc-cache.json
+events/filters/tides
+# Cached Cal Sailing open/close schedule, refetched by events/filters/tides.
+events/filters/.csc-cache.json
 # Private calendar/filter configs (real feed URLs, ignore globs). Auto-ignore
 # any events/*.conf so new ones can't be committed by accident; keep examples.
 events/*.conf

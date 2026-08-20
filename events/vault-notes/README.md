@@ -7,6 +7,7 @@ copy the ones you want into your vault:
 
 ```sh
 cp -n events/vault-notes/dance-socials/*.md "$NOTES_DIRECTORY/"
+cp -n events/vault-notes/sailing/*.md       "$NOTES_DIRECTORY/"
 ```
 
 They double as the fixture for `events/recurring_test.sh`, which runs against
@@ -37,3 +38,27 @@ Two readings of the source schedule are worth knowing about:
   socials rather than a literal 9 AM–12 PM.
 - **Mission City Swing** already in the vault starts at 20:00, but the schedule
   lists it at 9 PM–12 AM. The vault note is left alone — fix whichever is wrong.
+
+## sailing
+
+The Cal Sailing Club Beginning Sailing Lesson days. These replace the old
+`events/csc-lessons.conf`: the schedule now lives in the vault like every other
+recurring series, so changing when you sail is a note edit rather than a config
+edit and a rebuild.
+
+| note                        | when            | nominal time | in DST      |
+|-----------------------------|-----------------|--------------|-------------|
+| Cal Sailing Monday Lesson   | every Monday    | 13:00–16:00  | 13:00–17:00 |
+| Cal Sailing Thursday Lesson | every Thursday  | 13:00–16:00  | 13:00–17:00 |
+| Cal Sailing Saturday Lesson | every Saturday  | 10:00–13:00  | unchanged   |
+
+All three share the title **Cal Sailing Club @ Berkeley Marina** and are tagged
+`sailing`, which is what earns them the SAILING tag on the device and what
+`events/filters/tides` looks for.
+
+**The times above are nominal.** Berkeley Marina empties at low tide, so the
+club's real open and close times move daily; `events/filters/tides` narrows each
+window to the hours the club is actually open, and drops the event outright on a
+day the tide swallows the window whole. Keep these notes describing when the
+*lessons* are scheduled and let the filter worry about the water — see
+[Sailing times and the tide](../README.md#sailing-times-and-the-tide-filterstides).
