@@ -10,13 +10,16 @@
 #   ---
 #   start: 20:00          # 24-hour local time (omit for an all-day event)
 #   end:   23:30          # optional
+#   start_dst: 21:00      # optional; replaces start while DST is in effect
+#   end_dst:   00:30      # optional; replaces end while DST is in effect
 #   weekday: Monday       # full or 3-letter; also accepts a CSV list (Mon, Thu)
 #   week: 1, 3            # optional; nth Monday of the month. Omit = every week.
 #   message: Bring ID     # optional; rendered as an indented sub-line
 #   tags:
 #     - event
 #     - recurring
-#   ---
+#     - dance             # every tag beyond event/recurring rides along on the
+#   ---                   # emitted event, for events/tags.conf to match on
 # Title defaults to the note's filename (override with a `title:` field).
 #
 # `week` counts occurrences of the note's `weekday` within the month, matching
@@ -68,6 +71,28 @@ TODAY_DAYS_IN_MONTH=$(TZ="$EVENTS_TZ" \
   date -d "$(TZ="$EVENTS_TZ" date -d "$TODAY" +%Y-%m-01) +1 month -1 day" +%-d)
 TODAY_WEEK_ORDINAL=$(( (TODAY_DAY_OF_MONTH - 1) / 7 + 1 ))
 TODAY_IS_LAST_WEEKDAY_OF_MONTH=$(( TODAY_DAY_OF_MONTH + 7 > TODAY_DAYS_IN_MONTH ))
+
+# Whether Daylight Saving Time is in effect on $TODAY, worked out from the zone
+# itself rather than a hardcoded rule: DST is on when today's UTC offset is
+# bigger than the year's standard offset — the smaller of a midwinter and a
+# midsummer sample, which lands correctly in both hemispheres. A zone with no
+# DST has one offset all year and so always answers "no".
+offset_minutes() { # "-0800" -> -480
+  local raw="$1" sign=1
+  [[ ${raw:0:1} == "-" ]] && sign=-1
+  printf '%s' $(( sign * (10#${raw:1:2} * 60 + 10#${raw:3:2}) ))
+}
+
+TODAY_YEAR=$(TZ="$EVENTS_TZ" date -d "$TODAY" +%Y)
+TODAY_IS_DST=0
+if now_offset=$(TZ="$EVENTS_TZ" date -d "$TODAY 12:00" +%z 2>/dev/null) &&
+  jan_offset=$(TZ="$EVENTS_TZ" date -d "$TODAY_YEAR-01-15 12:00" +%z 2>/dev/null) &&
+  jul_offset=$(TZ="$EVENTS_TZ" date -d "$TODAY_YEAR-07-15 12:00" +%z 2>/dev/null); then
+  standard=$(offset_minutes "$jan_offset")
+  midsummer=$(offset_minutes "$jul_offset")
+  (( midsummer < standard )) && standard=$midsummer
+  (( $(offset_minutes "$now_offset") > standard )) && TODAY_IS_DST=1
+fi
 
 # True when a note's `week` spec covers today. An empty spec means "every week"
 # (the original behavior). A spec whose tokens are all unrecognized matches
@@ -137,7 +162,7 @@ fm_tags() {
 }
 
 emit_one() {
-  local file="$1" fm tags days weeks start end title message
+  local file="$1" fm tags days weeks start end start_dst end_dst title message
   fm=$(frontmatter "$file")
   [[ -z "$fm" ]] && return
 
@@ -157,15 +182,30 @@ emit_one() {
 
   start=$(fm_get "$fm" start)
   end=$(fm_get "$fm" end)
+
+  # A note may carry a Daylight-Saving variant of its window (Cal Sailing runs
+  # its afternoon lesson an hour later in summer). Each side overrides
+  # independently, so a note can shift only its end.
+  if (( TODAY_IS_DST )); then
+    start_dst=$(fm_get "$fm" start_dst)
+    end_dst=$(fm_get "$fm" end_dst)
+    [[ -n "$start_dst" ]] && start=$start_dst
+    [[ -n "$end_dst" ]] && end=$end_dst
+  fi
+
   message=$(fm_get "$fm" message)
   title=$(fm_get "$fm" title)
   [[ -z "$title" ]] && title=$(basename "$file" .md)
 
+  # Every tag past the two structural ones (`event`, `recurring`) rides along on
+  # the event so events/tags.conf can classify it by `tag:<name>` — the
+  # frontmatter provenance of the dashboard's tagging.
   jq -n \
     --arg title "$title" \
     --arg start "$start" \
     --arg end_time "$end" \
     --arg message "$message" \
+    --arg tags_raw "$tags" \
     --arg date "$TODAY" '
     {
       title:   $title,
@@ -173,6 +213,9 @@ emit_one() {
       "end":   (if $end_time == "" then null else $end_time end),
       all_day: ($start == ""),
       message: (if $message == "" then null else $message end),
+      tags:    ($tags_raw | split("\n")
+                | map(select(. != "" and . != "event" and . != "recurring"))
+                | unique),
       date:    $date,
       sort:    ($date + "T" + (if $start == "" then "00:00" else $start end)),
       source:  "recurring"
