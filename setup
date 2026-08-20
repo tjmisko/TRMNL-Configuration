@@ -166,6 +166,28 @@ report_conf_drift() {
 report_conf_drift tags
 report_conf_drift sources
 
+# .env has the same problem, and section 2 cannot fix it: it seeds .env only
+# when there isn't one, so a pull that documents a new variable in .env.example
+# has no way into an .env that already exists. Whatever reads the variable then
+# falls back to its default, silently. TRMNL_PLUGIN_TOKEN arrived exactly this
+# way — the plugin definition kept its placeholder and the push failed on it.
+# Comparing keys rather than lines keeps the real values out of the comparison.
+report_env_drift() {
+  [[ -f .env && -f .env.example ]] || return 0
+  local missing
+  missing=$(comm -23 \
+    <(grep -oE '^[A-Za-z_][A-Za-z0-9_]*=' .env.example | tr -d '=' | sort -u) \
+    <(grep -oE '^[A-Za-z_][A-Za-z0-9_]*=' .env         | tr -d '=' | sort -u))
+  [[ -n "$missing" ]] || return 0
+  echo
+  echo "NOTE: .env is missing variables that .env.example documents:"
+  while IFS= read -r var; do echo "        $var"; done <<< "$missing"
+  echo "      It is gitignored, so this pull could not add them. Copy the lines"
+  echo "      across and fill them in."
+}
+
+report_env_drift
+
 # ── 4. Ensure scripts are executable ────────────────────────────────
 chmod +x update birthday/fetch tasks/fetch weather/fetch checklists/fetch \
   events/fetch events/sources/recurring BART/refresh-gtfs BART/fetch
