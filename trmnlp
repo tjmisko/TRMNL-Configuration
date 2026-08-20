@@ -9,7 +9,8 @@ set -euo pipefail
 #   ./trmnlp clone <n> <id> — clone an existing plugin
 #   ./trmnlp push           — upload plugin to TRMNL
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+CDPATH=
 PLUGIN_DIR="$SCRIPT_DIR/plugin"
 IMAGE="trmnl/trmnlp"
 CONFIG_DIR="$HOME/.config/trmnlp"
