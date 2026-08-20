@@ -1,27 +1,29 @@
 #!/usr/bin/env bash
 # Tests for events/sources/recurring, driven entirely through $EVENTS_TODAY.
 #
-#   events/recurring_test.sh              # run against events/vault-notes
+#   events/recurring_test.sh              # run against events/testdata/vault
 #   NOTES_DIRECTORY=~/Notes events/recurring_test.sh   # run against a real vault
 #
 # Each case asserts the exact set of titles the adapter emits for one date, so
 # a note that leaks onto the wrong week fails just as loudly as one that
 # vanishes. Dates are in August 2026, whose 1st is a Saturday.
 #
-# The fixture vault holds two schedules: the dance socials (weekly and
-# nth-weekday notes) and the Cal Sailing lessons (Mon/Thu/Sat, with a summer
-# window that shifts under Daylight Saving Time), so the sailing lesson shows up
-# in every Monday, Thursday, and Saturday expectation below.
+# The fixture vault is synthetic — real schedules are personal, and this repo is
+# public. Its notes are named for the rule each one exercises. Two of them,
+# Afternoon Class (Mon/Thu) and Morning Class (Sat), run every week and carry the
+# seasonal-window case, so they appear in every Monday, Thursday, and Saturday
+# expectation below.
 # >/dev/null guards against a set CDPATH making `cd` echo the path.
 SCRIPT_DIR="$(cd "$(dirname "$0")" >/dev/null 2>&1 && pwd)"
 ADAPTER="$SCRIPT_DIR/sources/recurring"
 
-export NOTES_DIRECTORY="${NOTES_DIRECTORY:-$SCRIPT_DIR/vault-notes}"
+export NOTES_DIRECTORY="${NOTES_DIRECTORY:-$SCRIPT_DIR/testdata/vault}"
 export EVENTS_TZ="${EVENTS_TZ:-America/Los_Angeles}"
 
 failures=0
 
-SAILING='Cal Sailing Club @ Berkeley Marina'
+AFTERNOON='Afternoon Class'
+MORNING='Morning Class'
 
 # expect <date> <comment> <title>... — asserts the emitted titles, in order.
 expect() {
@@ -43,39 +45,39 @@ expect() {
 }
 
 # Weekly notes (no `week:`) show up on every occurrence of their weekday.
-expect 2026-08-04 'Tue, 1st week'  'East Bay Fusion'
-expect 2026-08-25 'Tue, 4th week'  'East Bay Fusion'
-expect 2026-08-20 'Thu, every week' "$SAILING" 'CI Jam @ Finnish Hall'
+expect 2026-08-04 'Tue, 1st week'   'Tuesday Social'
+expect 2026-08-25 'Tue, 4th week'   'Tuesday Social'
+expect 2026-08-20 'Thu, every week' "$AFTERNOON" 'Thursday Social'
 
 # Monthly notes appear only on their listed occurrence of that weekday.
-expect 2026-08-01 'Sat, 1st week'  "$SAILING" 'Circle Left' 'Bal Haus' 'Mission Fusion'
-expect 2026-08-08 'Sat, 2nd week'  "$SAILING" 'Microfusion'
-expect 2026-08-15 'Sat, 3rd week'  "$SAILING" 'Breakaway Blues' 'Mission Fusion'
-expect 2026-08-22 'Sat, 4th week — sailing only, no Saturday socials' "$SAILING"
-expect 2026-08-29 'Sat, 5th week — sailing only, no Saturday socials' "$SAILING"
-expect 2026-08-14 'Fri, 2nd week'  'Starry Plough'
-expect 2026-08-07 'Fri, 1st week — Starry Plough is 2nd only'
-expect 2026-08-23 'Sun, 4th week'  'Down to Dance'
-expect 2026-08-30 'Sun, 5th week — Down to Dance is 4th only'
+expect 2026-08-01 'Sat, 1st week' "$MORNING" \
+  'First Saturday Early' 'First Saturday Late' 'First And Third Saturday'
+expect 2026-08-08 'Sat, 2nd week' "$MORNING" 'Second Saturday'
+expect 2026-08-15 'Sat, 3rd week' "$MORNING" \
+  'First And Third Saturday' 'Third Saturday'
+expect 2026-08-22 'Sat, 4th week — only the weekly note' "$MORNING"
+expect 2026-08-29 'Sat, 5th week — only the weekly note' "$MORNING"
+expect 2026-08-14 'Fri, 2nd week'  'Second Friday'
+expect 2026-08-07 'Fri, 1st week — Second Friday is 2nd only'
+expect 2026-08-23 'Sun, 4th week'  'Fourth Sunday'
+expect 2026-08-30 'Sun, 5th week — Fourth Sunday is 4th only'
 
 # A `week: 1, 3` note fires on both listed weeks and nothing between them.
-expect 2026-09-05 'Sat, 1st week of a month starting Tuesday' \
-  "$SAILING" 'Circle Left' 'Bal Haus' 'Mission Fusion'
-expect 2026-09-19 'Sat, 3rd week of a month starting Tuesday' \
-  "$SAILING" 'Breakaway Blues' 'Mission Fusion'
+expect 2026-09-05 'Sat, 1st week of a month starting Tuesday' "$MORNING" \
+  'First Saturday Early' 'First Saturday Late' 'First And Third Saturday'
+expect 2026-09-19 'Sat, 3rd week of a month starting Tuesday' "$MORNING" \
+  'First And Third Saturday' 'Third Saturday'
 
 # February 2026 has exactly four Saturdays, so the 4th is also the last.
-expect 2026-02-28 'Sat, 4th and last week of a 28-day month' "$SAILING"
+expect 2026-02-28 'Sat, 4th and last week of a 28-day month' "$MORNING"
 
-# ── The sailing schedule ────────────────────────────────────────────
-# Cal Sailing runs beginning lessons Monday, Thursday, and Saturday. These are
-# the NOMINAL windows; events/filters/tides reconciles them with the tide.
+# ── Weekday lists and seasonal windows ──────────────────────────────
 
-# window <date> <comment> <start> <end> — asserts the sole event's times.
+# window <date> <comment> <start> <end> — asserts Afternoon/Morning Class times.
 window() {
-  local date="$1" comment="$2" want="$3-$4" got
+  local date="$1" comment="$2" title="$3" want="$4-$5" got
   got=$(EVENTS_TODAY="$date" "$ADAPTER" \
-    | jq -r --arg t "$SAILING" '.[] | select(.title == $t) | .start + "-" + .["end"]')
+    | jq -r --arg t "$title" '.[] | select(.title == $t) | .start + "-" + .["end"]')
 
   if [[ "$got" == "$want" ]]; then
     printf 'ok    %s  %s\n' "$date" "$comment"
@@ -88,22 +90,22 @@ window() {
   printf '        got:  %s\n' "$got"
 }
 
-expect 2026-08-03 'Mon — sailing is the only Monday note' "$SAILING"
-expect 2026-08-05 'Wed — no sailing lesson midweek'
-expect 2026-08-11 'Tue — sailing does not leak onto the Tuesday social' \
-  'East Bay Fusion'
+# `weekday: Mon, Thu` fires on both listed days and no others.
+expect 2026-08-03 'Mon — the CSV weekday list fires' "$AFTERNOON"
+expect 2026-08-05 'Wed — and not on an unlisted day'
+expect 2026-08-11 'Tue — nor does it leak onto the Tuesday note' 'Tuesday Social'
 
-# `start_dst`/`end_dst` push the afternoon lesson an hour later in summer.
-window 2026-08-03 'Mon in DST runs to 5 PM'          13:00 17:00
-window 2026-01-05 'Mon outside DST runs to 4 PM'     13:00 16:00
-window 2026-08-20 'Thu in DST runs to 5 PM'          13:00 17:00
-window 2026-01-08 'Thu outside DST runs to 4 PM'     13:00 16:00
+# `start_dst`/`end_dst` extend the window while DST is in effect.
+window 2026-08-03 'Mon in DST runs an hour later'      "$AFTERNOON" 13:00 17:00
+window 2026-01-05 'Mon outside DST keeps its base end' "$AFTERNOON" 13:00 16:00
+window 2026-08-20 'Thu in DST runs an hour later'      "$AFTERNOON" 13:00 17:00
+window 2026-01-08 'Thu outside DST keeps its base end' "$AFTERNOON" 13:00 16:00
 
-# The Saturday morning window carries no DST variant, so it never shifts.
-window 2026-08-01 'Sat in DST is unmoved'            10:00 13:00
-window 2026-02-28 'Sat outside DST is unmoved'       10:00 13:00
+# A note with no DST variant never shifts.
+window 2026-08-01 'Sat in DST is unmoved'      "$MORNING" 10:00 13:00
+window 2026-02-28 'Sat outside DST is unmoved' "$MORNING" 10:00 13:00
 
-# The dance socials only exercise plain digits. Spell the rest of the accepted
+# The fixture only exercises plain digits. Spell the rest of the accepted
 # `week` vocabulary out in a scratch vault: ordinal words, `last`, and a typo.
 FIXTURE_VAULT=$(mktemp -d)
 trap 'rm -rf "$FIXTURE_VAULT"' EXIT

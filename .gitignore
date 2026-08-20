@@ -10,6 +10,12 @@ events/sources/ics
 events/filters/tides
 # Cached Cal Sailing open/close schedule, refetched by events/filters/tides.
 events/filters/.csc-cache.json
+# Your actual schedule. These are copies of real vault notes — what you do, when,
+# and where — and this repo is public. The tests run against the synthetic
+# fixtures in events/testdata/vault instead, so nothing here is needed to clone
+# and run; keep it as a private scratch area for notes on their way to the vault.
+events/vault-notes/
+
 # Private calendar/filter configs (real feed URLs, ignore globs). Auto-ignore
 # any events/*.conf so new ones can't be committed by accident; keep examples.
 events/*.conf
