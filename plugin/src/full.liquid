@@ -142,7 +142,12 @@ of the panel. --{% endcomment %}
 
     <div class="column" style="flex: 38; height: 100%; display: flex; white-space: nowrap; flex-direction: column; justify-content: center; gap: 16px; font-family: monospace; font-size: 16px;">
       <div>
-        <div class="label" style="margin: 0; padding: 0; line-height: 1.2;">Weather</div>
+        {% comment %}-- UV rides on the Weather heading rather than taking a row of its
+        own: it is a single number, and the heading line is already half empty. --{% endcomment %}
+        <div class="label" style="display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin: 0; padding: 0; line-height: 1.2;">
+          <span>Weather</span>
+          {% if weather.uv %}<span style="font-weight: normal;">UV: <span style="font-weight: bold;">{{ weather.uv.max }}</span></span>{% endif %}
+        </div>
         <div>
           {% if weather.sf %}
           <div style="display: flex; justify-content: space-between; gap: 16px; padding: 3px 0; border-bottom: 1px dashed #ccc;">
@@ -165,19 +170,6 @@ of the panel. --{% endcomment %}
             <div style="font-size: 12px; font-weight: normal; padding-left: 8px;">
               Wind {{ weather.berkeley_marina.wind.dir }} {{ weather.berkeley_marina.wind.speed_kt }} kt{% if weather.berkeley_marina.wind.gust_kt %} (G {{ weather.berkeley_marina.wind.gust_kt }}){% endif %}
             </div>
-          </div>
-          {% endif %}
-          {% if weather.uv %}
-          <div style="padding: 3px 0; border-bottom: 1px dashed #ccc;">
-            <div style="display: flex; justify-content: space-between; gap: 16px;">
-              <span style="min-width: 110px;">UV Index</span>
-              <span>{{ weather.uv.max }} {{ weather.uv.band }}</span>
-            </div>
-            {% if weather.uv.max >= 6 and weather.uv.peak %}
-            <div style="font-size: 12px; font-weight: normal; padding-left: 8px;">
-              Peak {{ weather.uv.peak }}
-            </div>
-            {% endif %}
           </div>
           {% endif %}
         </div>
