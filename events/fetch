@@ -110,7 +110,7 @@ if [[ -f "$TAGS_FILE" ]]; then
   # `read -r label matcher` puts the whole remainder in $matcher, so a title
   # glob may contain spaces ("Sailing  title:Cal Sailing*").
   while read -r label matcher; do
-    if [[ "$matcher" == heading ]]; then
+    if [[ "${matcher,,}" == heading ]]; then
       TAG_RULES+=$(printf '%s\theading\t' "$label")$'\n'
       continue
     fi

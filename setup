@@ -120,6 +120,26 @@ else
   echo "events/sources.conf already exists, skipping"
 fi
 
+# ── 3d. Report config that a pull could not update ──────────────────
+# events/*.conf is gitignored, so a pull can bring code that reads a setting the
+# local file has never heard of — a new tag, a new pipeline stage. The dashboard
+# then quietly renders the old thing, correctly, from its own point of view.
+# Copying the example over would clobber real local config, so say it instead.
+report_conf_drift() {
+  local name="$1" live example
+  [[ -f "events/$name.conf" && -f "events/$name.conf.example" ]] || return 0
+  live=$(grep -vE '^[[:space:]]*(#|$)' "events/$name.conf")
+  example=$(grep -vE '^[[:space:]]*(#|$)' "events/$name.conf.example")
+  [[ "$live" == "$example" ]] && return 0
+  echo
+  echo "NOTE: events/$name.conf differs from events/$name.conf.example."
+  echo "      It is gitignored, so this pull could not update it. Review with:"
+  echo "        diff events/$name.conf events/$name.conf.example"
+}
+
+report_conf_drift tags
+report_conf_drift sources
+
 # ── 4. Ensure scripts are executable ────────────────────────────────
 chmod +x update birthday/fetch tasks/fetch weather/fetch checklists/fetch \
   events/fetch events/sources/recurring BART/refresh-gtfs BART/fetch

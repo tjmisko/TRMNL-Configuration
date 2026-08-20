@@ -208,9 +208,9 @@ A section with nothing in it today is omitted entirely, the way Birthdays is.
 
 ### Degrading
 
-Trailing `#` comments and blank lines are ignored, and a malformed line is
-skipped with a warning rather than taking the file down. The path is overridable
-with `$EVENTS_TAGS_FILE`.
+Trailing `#` comments and blank lines are ignored, `heading` is matched
+case-insensitively, and a malformed line is skipped with a warning rather than
+taking the file down. The path is overridable with `$EVENTS_TAGS_FILE`.
 
 A missing `tags.conf` is not fatal — every event simply comes out `Other` in one
 Events section, in plain time order, and the aggregator says so on stderr.
@@ -234,6 +234,35 @@ new adapter into `sources/` works without touching this file — and a name here
 that matches no stage warns on stderr rather than silently doing nothing. The
 path is overridable with `$EVENTS_SOURCES_FILE`.
 
+
+## Upgrading a deployed copy
+
+Every `events/*.conf` is gitignored — including `tags.conf` and `sources.conf`,
+which hold no secrets today but are the files most likely to grow one, and the
+blanket rule is what stops that being committed by reflex on a public repo.
+
+The cost is that **`git pull` cannot update them**. Pulling a change that adds a
+tag, a heading, or a pipeline stage brings the code but not the line that turns
+it on, and the dashboard goes on rendering the old thing — correctly, from its
+own point of view, and without complaint. This has bitten twice.
+
+So after pulling on any machine that runs `update`, diff each config against its
+example and copy across anything new:
+
+```sh
+git pull --ff-only origin main
+diff events/tags.conf    events/tags.conf.example
+diff events/sources.conf events/sources.conf.example
+# ...copy over any new rule, declaration, or stage, then:
+./update
+```
+
+`./setup` reports the same drift at the end of its run, so if you deploy with
+`setup` you get the reminder for free. It only ever *reports* — copying the
+example over would clobber real local config.
+
+Feed URLs and ignore globs diverge legitimately from machine to machine, so
+`feeds.conf` and `ignore.conf` are expected to differ and are not reported.
 
 ## Recurring-event notes
 
