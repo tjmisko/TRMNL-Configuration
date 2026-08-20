@@ -1,17 +1,25 @@
 #!/usr/bin/env bash
 # Events aggregator.
 #
-# Runs every executable adapter in events/sources/, each of which prints a JSON
-# array of normalized event objects:
+# The pipeline has two kinds of stage, each discovered by dropping an executable
+# into a directory and each switchable in events/sources.conf:
 #
-#   { "title", "start", "end", "all_day", "date", "sort", "source" }
+#   sources/   produce events   (print a JSON array of normalized event objects)
+#   filters/   rewrite events   (read that array on stdin, print one on stdout)
 #
-# then merges them, filters to today (in $EVENTS_TZ), drops any whose title
-# matches a glob in events/ignore.conf, sorts (all-day events first, then by
-# start time, then title), and collapses exact duplicates (same title + start,
-# e.g. an event cross-posted to two calendars). Genuine conflicts at different
-# times are kept on purpose. Adding a new calendar = drop a new executable
-# adapter into events/sources/ that emits the schema above.
+#   { "title", "start", "end", "all_day", "message", "tags",
+#     "date", "sort", "source", "tag" }
+#
+# Order of operations: run every enabled source and merge; keep today's events
+# (in $EVENTS_TZ); drop any whose title matches a glob in events/ignore.conf;
+# assign each event its display tag from events/tags.conf; run every enabled
+# filter over the tagged list; then sort (by tag, then all-day first, then start
+# time, then title) and collapse exact duplicates (same title + start, e.g. an
+# event cross-posted to two calendars). Genuine conflicts at different times are
+# kept on purpose.
+#
+# Tagging happens BEFORE the filters so a filter can act on a tag: that is how
+# filters/tides finds the sailing events it needs to reconcile with the tide.
 # >/dev/null guards against a set CDPATH making `cd` echo the path (which would
 # otherwise be captured into SCRIPT_DIR and double it).
 SCRIPT_DIR="$(cd "$(dirname "$0")" >/dev/null 2>&1 && pwd)"
@@ -20,11 +28,94 @@ source "$SCRIPT_DIR/../.env" 2>/dev/null
 EVENTS_TZ="${EVENTS_TZ:-America/Los_Angeles}"
 EVENTS_TODAY=$(TZ="$EVENTS_TZ" date +%Y-%m-%d)
 EVENTS_FEEDS_FILE="${EVENTS_FEEDS_FILE:-$SCRIPT_DIR/feeds.conf}"
+# Every path this script reads is overridable, so the whole pipeline can be
+# pointed at a fixture (see events/tags_test.sh) without touching the real one.
+SOURCES_DIR="${EVENTS_SOURCES_DIR:-$SCRIPT_DIR/sources}"
+FILTERS_DIR="${EVENTS_FILTERS_DIR:-$SCRIPT_DIR/filters}"
 export NOTES_DIRECTORY NOTES_EVENTS_SUBDIR LUMA_ICS_URL EVENTS_FEEDS_FILE EVENTS_TZ EVENTS_TODAY
 
+# Strip CRs, trailing #-comments, and surrounding whitespace from a config file;
+# blank lines drop out. Shared by sources.conf and tags.conf.
+conf_lines() {
+  sed -e 's/\r$//' -e 's/#.*//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' "$1" \
+    | grep -v '^$'
+}
+
+# Translate one shell-style glob into an anchored regex: `*` -> .*, `?` -> .,
+# every other regex metacharacter escaped so it matches literally.
+glob_to_regex() {
+  printf '%s' "$1" \
+    | sed -e 's/[.[\(){}^$+|]/\\&/g' -e 's/]/\\]/g' \
+          -e 's/\*/.*/g' -e 's/?/./g' -e 's/^/^/' -e 's/$/$/'
+}
+
+# ── Stage toggles (events/sources.conf) ─────────────────────────────
+# "<name> on|off", one per stage. A stage that isn't listed defaults to on, so
+# dropping a new adapter into sources/ works without editing any config.
+declare -A STAGE_SETTING=()
+STAGES_FILE="${EVENTS_SOURCES_FILE:-$SCRIPT_DIR/sources.conf}"
+if [[ -f "$STAGES_FILE" ]]; then
+  while read -r stage setting; do
+    case "${setting,,}" in
+      on | yes | true | 1 | enabled) STAGE_SETTING[$stage]=on ;;
+      off | no | false | 0 | disabled) STAGE_SETTING[$stage]=off ;;
+      "")
+        printf 'events/fetch: sources.conf: %s has no on/off setting; leaving it on\n' \
+          "$stage" >&2
+        ;;
+      *)
+        printf 'events/fetch: sources.conf: %s: unrecognized setting %s; leaving it on\n' \
+          "$stage" "$setting" >&2
+        ;;
+    esac
+  done < <(conf_lines "$STAGES_FILE")
+fi
+
+# Track which toggles actually matched a stage, so a typo announces itself
+# instead of quietly leaving a source you meant to disable switched on.
+declare -A STAGE_SEEN=()
+stage_enabled() {
+  STAGE_SEEN[$1]=yes
+  [[ "${STAGE_SETTING[$1]:-on}" == on ]]
+}
+
+# ── Tag rules (events/tags.conf) ────────────────────────────────────
+# "<Tag> <kind>:<glob>", where <kind> is tag / source / title — the three
+# provenances a tag can come from (a note's own frontmatter tags, the calendar
+# or adapter it arrived from, or its title). Rules are handed to jq as a TSV of
+# "<Tag>\t<kind>\t<regex>" lines in file order: first match wins, and the order
+# tags first appear here is the order they appear on screen.
+TAG_RULES=""
+TAGS_FILE="${EVENTS_TAGS_FILE:-$SCRIPT_DIR/tags.conf}"
+if [[ -f "$TAGS_FILE" ]]; then
+  # `read -r label matcher` puts the whole remainder in $matcher, so a title
+  # glob may contain spaces ("Sailing  title:Cal Sailing*").
+  while read -r label matcher; do
+    if [[ "$matcher" != *:?* ]]; then
+      printf 'events/fetch: tags.conf: %s: expected <kind>:<glob>, got %s\n' \
+        "$label" "${matcher:-nothing}" >&2
+      continue
+    fi
+    kind=${matcher%%:*}
+    case "$kind" in
+      tag | source | title) ;;
+      *)
+        printf 'events/fetch: tags.conf: %s: unknown matcher kind %s\n' "$label" "$kind" >&2
+        continue
+        ;;
+    esac
+    TAG_RULES+=$(printf '%s\t%s\t%s' "$label" "$kind" "$(glob_to_regex "${matcher#*:}")")$'\n'
+  done < <(conf_lines "$TAGS_FILE")
+else
+  printf 'events/fetch: no tags.conf at %s; every event will be tagged Other\n' \
+    "$TAGS_FILE" >&2
+fi
+
+# ── Sources ─────────────────────────────────────────────────────────
 all='[]'
-for adapter in "$SCRIPT_DIR"/sources/*; do
+for adapter in "$SOURCES_DIR"/*; do
   [ -x "$adapter" ] || continue
+  stage_enabled "$(basename "$adapter")" || continue
   out=$("$adapter" 2>/dev/null)
   if ! printf '%s' "$out" | jq empty 2>/dev/null; then
     printf 'events/fetch: adapter %s produced invalid JSON; using []\n' \
@@ -36,8 +127,7 @@ done
 
 # Build a single case-insensitive regex from the OR of title globs in
 # ignore.conf (each line: a shell-style glob, # comments and blanks ignored).
-# Globs are anchored and translated to regex (* → .*, ? → .); other regex
-# metacharacters are escaped so they match literally. Empty → no filtering.
+# Empty -> no filtering.
 IGNORE_FILE="${EVENTS_IGNORE_FILE:-$SCRIPT_DIR/ignore.conf}"
 IGNORE_RE=""
 if [[ -f "$IGNORE_FILE" ]]; then
@@ -50,20 +140,75 @@ if [[ -f "$IGNORE_FILE" ]]; then
   )
 fi
 
-printf '%s' "$all" | jq --arg today "$EVENTS_TODAY" --arg re "$IGNORE_RE" '
+# ── Narrow to today, then tag ───────────────────────────────────────
+all=$(printf '%s' "$all" | jq --arg today "$EVENTS_TODAY" --arg re "$IGNORE_RE" \
+  --arg rules "$TAG_RULES" '
   # Strip emoji (pictographs, dingbats, symbols, ZWJ/skin-tone/variation
   # selectors) from a title, then collapse and trim leftover whitespace.
   def strip_emoji:
     gsub("[\\x{1F000}-\\x{1FAFF}\\x{2300}-\\x{27BF}\\x{2B00}-\\x{2BFF}\\x{FE00}-\\x{FE0F}\\x{200D}\\x{20E3}]"; "")
     | gsub("\\s+"; " ") | sub("^ +"; "") | sub(" +$"; "");
-  [ .[]
-    | select(.date == $today)
-    | .title |= strip_emoji
-    | select($re == "" or (.title | test($re; "i") | not))
-  ]
-  | sort_by([(.all_day | not), .sort, .title])
+
+  ($rules | split("\n") | map(select(length > 0) | split("\t"))
+          | map({tag: .[0], kind: .[1], regex: .[2]})) as $rule
+
+  # On-screen tag order is first appearance in tags.conf, with the implicit
+  # "Other" bucket last unless the file placed it somewhere itself.
+  | (reduce $rule[] as $r ([]; if index($r.tag) then . else . + [$r.tag] end)
+     | if index("Other") then . else . + ["Other"] end) as $order
+
+  | [ .[]
+      | select(.date == $today)
+      | .title |= strip_emoji
+      | select($re == "" or (.title | test($re; "i") | not))
+    ]
+  | map(
+      . as $e
+      | (first(
+          $rule[]
+          | . as $r
+          | select(
+              # tostring keeps a source that hands us a number or a bool from
+              # aborting the whole run inside test/2.
+              if $r.kind == "tag" then (($e.tags // []) | any(tostring | test($r.regex; "i")))
+              elif $r.kind == "source" then (($e.source // "" | tostring) | test($r.regex; "i"))
+              elif $r.kind == "title" then (($e.title // "" | tostring) | test($r.regex; "i"))
+              else false
+              end)
+          | $r.tag) // "Other") as $tag
+      | $e + {tag: $tag, tag_rank: ($order | index($tag))}
+    )
+')
+
+# ── Filters ─────────────────────────────────────────────────────────
+# A filter rewrites the list it is given. Unlike a source, a filter that fails
+# must never empty the dashboard, so a bad result leaves the events untouched.
+# Filter stderr is deliberately NOT swallowed: it is where filters/tides
+# explains that it dropped a lesson because the club never opened.
+for filter in "$FILTERS_DIR"/*; do
+  [ -x "$filter" ] || continue
+  stage_enabled "$(basename "$filter")" || continue
+  out=$(printf '%s' "$all" | "$filter")
+  if printf '%s' "$out" | jq -e 'type == "array"' >/dev/null 2>&1; then
+    all=$out
+  else
+    printf 'events/fetch: filter %s produced no event array; keeping its input\n' \
+      "$(basename "$filter")" >&2
+  fi
+done
+
+for stage in "${!STAGE_SETTING[@]}"; do
+  [[ -n "${STAGE_SEEN[$stage]:-}" ]] && continue
+  printf 'events/fetch: sources.conf: %s matches no source or filter\n' "$stage" >&2
+done
+
+# ── Sort and de-duplicate ───────────────────────────────────────────
+# tag_rank is scaffolding for the sort; the device only ever sees `tag`.
+printf '%s' "$all" | jq '
+  sort_by([(.tag_rank // 9999), (.all_day | not), .sort, .title])
   | reduce .[] as $e ({seen: {}, out: []};
       ($e.date + "|" + ($e.start // "all-day") + "|" + $e.title) as $k
       | if .seen[$k] then . else .seen[$k] = true | .out += [$e] end)
   | .out
+  | map(del(.tag_rank))
 '

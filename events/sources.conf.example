@@ -1,0 +1,22 @@
+# events/sources.conf — turn individual event pipeline stages on and off.
+#
+# The events pipeline has two kinds of stage, each discovered by dropping an
+# executable into a directory:
+#
+#   events/sources/   produce events   (each prints a JSON array)
+#   events/filters/   rewrite events   (each reads an array on stdin, prints one)
+#
+# Format: one line per stage, "<name>  on|off".
+#
+#   <name>   the executable's filename (`recurring`, `ics`, `tides`, ...).
+#   on|off   also accepts yes/no, true/false, 1/0, enabled/disabled.
+#
+# A stage NOT listed here defaults to ON, so dropping in a new adapter works
+# without touching this file. '#' comments and blank lines are ignored.
+
+# ── Sources ────────────────────────────────────────────────────────
+recurring  on    # weekly/monthly notes from the vault ($NOTES_DIRECTORY)
+ics        on    # .ics calendar feeds listed in events/feeds.conf
+
+# ── Filters ────────────────────────────────────────────────────────
+tides      on    # rewrite `sailing` events to Cal Sailing's live club hours
