@@ -94,7 +94,7 @@ These variables are available in `full.liquid` via the polled `trmnl.json`:
 
 | Variable | Type | Shape |
 |----------|------|-------|
-| `date` | string | `"Last (Fifth) Monday, 31 August 2026"` — the weekday is prefixed with which occurrence of it the date is in the month. The prefix is `First`–`Fifth`, except on the last occurrence of that weekday in the month, which reads `Last (Fourth)` or `Last (Fifth)` |
+| `date` | string | `"Fifth (Last) Monday, 31 August 2026"` — the weekday is prefixed with which occurrence of it the date is in the month, `First`–`Fifth`. The last occurrence of that weekday in the month is additionally marked `(Last)`, which only ever falls on `Fourth (Last)` or `Fifth (Last)` |
 | `week` | string | `"Week 09"` |
 | `day_of_year` | number | `243` — today's ordinal day, 1 on 1 January through 365 (366 in a leap year) on 31 December |
 | `days_to_go` | number | `122` — days left in the year, excluding today, so it always sums with `day_of_year` to the year's length. 0 on 31 December |
