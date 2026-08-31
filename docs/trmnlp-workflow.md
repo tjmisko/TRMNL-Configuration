@@ -94,8 +94,10 @@ These variables are available in `full.liquid` via the polled `trmnl.json`:
 
 | Variable | Type | Shape |
 |----------|------|-------|
-| `date` | string | `"Monday, 23 February 2026"` |
+| `date` | string | `"Last (Fifth) Monday, 31 August 2026"` — the weekday is prefixed with which occurrence of it the date is in the month. The prefix is `First`–`Fifth`, except on the last occurrence of that weekday in the month, which reads `Last (Fourth)` or `Last (Fifth)` |
 | `week` | string | `"Week 09"` |
+| `next_year` | number | `2027` — the calendar year after the current one |
+| `days_until_new_year` | number | `123` — whole days from today to `next_year`-01-01. Never 0; it is 1 on 31 December and 365/366 on 1 January |
 | `greetings` | string | `"Greetings from retend.app"` |
 | `is_sunday` | boolean | `true` when today is Sunday |
 | `is_last_day_of_month` | boolean | `true` on the last calendar day of the month |

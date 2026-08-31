@@ -2,10 +2,28 @@
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 source "$SCRIPT_DIR/.env" 2>/dev/null
 export NOTES_DIRECTORY PROJECT_DIRECTORY
-DATE_STRING=$(date +"%A, %d %B %Y")
+DAY_OF_MONTH=$(date +"%-d")
+DAYS_IN_MONTH=$(date -d "$(date +%Y-%m-01) +1 month -1 day" +"%-d")
+# Which occurrence of this weekday the date is: the 1st through 7th of any
+# month hold the first, the 8th through 14th the second, and so on. It is the
+# last one when another seven days would run off the end of the month, which
+# can only ever make it the fourth or the fifth.
+WEEKDAY_OCCURRENCE=$(((DAY_OF_MONTH - 1) / 7 + 1))
+WEEKDAY_ORDINALS=("" "First" "Second" "Third" "Fourth" "Fifth")
+WEEKDAY_ORDINAL=${WEEKDAY_ORDINALS[$WEEKDAY_OCCURRENCE]}
+if ((DAY_OF_MONTH + 7 > DAYS_IN_MONTH)); then
+  WEEKDAY_PREFIX="Last ($WEEKDAY_ORDINAL)"
+else
+  WEEKDAY_PREFIX="$WEEKDAY_ORDINAL"
+fi
+DATE_STRING="$WEEKDAY_PREFIX $(date +"%A, %d %B %Y")"
 WEEK_STRING=$(date +"Week %V")
 IS_SUNDAY=$([[ $(date +"%u") == "7" ]] && echo true || echo false)
 IS_LAST_DAY_OF_MONTH=$([[ $(date +"%d") == $(date -d "$(date +%Y-%m-01) +1 month -1 day" +"%d") ]] && echo true || echo false)
+NEXT_YEAR=$(($(date +"%Y") + 1))
+# Both ends are pinned to UTC midnight so the subtraction is a whole number of
+# days regardless of any DST transition the interval happens to straddle.
+DAYS_UNTIL_NEW_YEAR=$((($(date -u -d "$NEXT_YEAR-01-01 UTC" +%s) - $(date -u -d "$(date +%F) UTC" +%s)) / 86400))
 
 validate_json() {
   local raw="$1"
@@ -45,6 +63,8 @@ jq -n \
   --arg week "$WEEK_STRING" \
   --argjson is_sunday "$IS_SUNDAY" \
   --argjson is_last_day_of_month "$IS_LAST_DAY_OF_MONTH" \
+  --argjson next_year "$NEXT_YEAR" \
+  --argjson days_until_new_year "$DAYS_UNTIL_NEW_YEAR" \
   --argjson birthdays "$BIRTHDAYS" \
   --argjson tasks "$TASKS" \
   --argjson events "$EVENTS" \
@@ -56,6 +76,8 @@ jq -n \
   greetings: $greetings,
   date: $date,
   week: $week,
+  next_year: $next_year,
+  days_until_new_year: $days_until_new_year,
   birthdays: $birthdays,
   tasks: $tasks,
   events: $events,

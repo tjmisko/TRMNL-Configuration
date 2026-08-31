@@ -699,8 +699,28 @@ together in one pass ahead of the event sections rather than in reading order.
   </div>
 </div>
 
+{%- comment -%}
+Two right-hand sections rather than one. Both are `.instance`, which ships as
+`flex: 1 1 auto; text-align: right` — sized for being the bar's only tenant.
+Two of those split the slack and drift apart, and pinning them both to their
+content instead leaves them packed against the title, because a flex line with
+nothing that grows stays left. So every section here is `flex: 0 0 auto` and the
+free space is handed to one `margin-left: auto` on the week: auto margins absorb
+what is left only after flex-grow has taken its share, so this works precisely
+because nothing grows. The trio then sits at the right edge as one block.
+
+The rule between them is a span with no content and no width carrying a single
+`border-left`, which puts the bar's own 10px `gap` on both sides of it. 18px is
+the cap height of the 16px face plus a little, so the rule reads as tall as the
+text rather than as tall as the bar.
+
+Widest realistic bar: "Last (Second) Wednesday, 30 September 2026" at 16px Inter
+is ~316px, the two sections ~205px, chrome and gaps ~70px — about 590 of 800.
+{%- endcomment -%}
 <div class="title_bar">
   <img class="image" src="">
   <span class="title">{{ date }}</span>
-  <span class="instance">{{ week }}</span>
+  <span class="instance" style="flex: 0 0 auto; margin-left: auto;">{{ week }}</span>
+  <span class="instance" style="flex: 0 0 auto; align-self: center; width: 0; padding: 0; height: 18px; border-left: 1px solid currentColor;"></span>
+  <span class="instance" style="flex: 0 0 auto;">{{ days_until_new_year }} Day{% unless days_until_new_year == 1 %}s{% endunless %} Until {{ next_year }}</span>
 </div>
