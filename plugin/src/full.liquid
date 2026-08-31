@@ -87,6 +87,11 @@ rather than nine times below. --{%- endcomment -%}
 {%- assign sun_count = 0 -%}
 {%- if is_sunday -%}{%- assign sun_count = checklists.sunday | size -%}{%- endif -%}
 {%- assign task_count = tasks | size -%}
+{%- comment -%}-- The end-of-day checklist exists only in the evening, so its
+count is zero for most of the day and every rule below that keys off a count
+ignores it for free. --{%- endcomment -%}
+{%- assign eod_count = 0 -%}
+{%- if is_evening -%}{%- assign eod_count = checklists.end_of_day | size -%}{%- endif -%}
 {%- assign bd_widest = 0 -%}
 {%- for item in birthdays -%}{%- assign n = item | size -%}{%- if n > bd_widest -%}{%- assign bd_widest = n -%}{%- endif -%}{%- endfor -%}
 {%- assign eom_widest = 0 -%}
@@ -95,6 +100,8 @@ rather than nine times below. --{%- endcomment -%}
 {%- for item in checklists.sunday -%}{%- assign n = item | size -%}{%- if n > sun_widest -%}{%- assign sun_widest = n -%}{%- endif -%}{%- endfor -%}
 {%- assign task_widest = 0 -%}
 {%- for item in tasks -%}{%- assign n = item | size -%}{%- if n > task_widest -%}{%- assign task_widest = n -%}{%- endif -%}{%- endfor -%}
+{%- assign eod_widest = 0 -%}
+{%- if eod_count > 0 -%}{%- for item in checklists.end_of_day -%}{%- assign n = item | size -%}{%- if n > eod_widest -%}{%- assign eod_widest = n -%}{%- endif -%}{%- endfor -%}{%- endif -%}
 
 {%- comment -%}
 ═══ The rail ════════════════════════════════════════════════════════════════
@@ -125,6 +132,13 @@ and the day still reads; both need a checklist the current one is nowhere near.
 {%- if weather.sf -%}{%- assign weather_h = weather_h | plus: 27.8 -%}{%- endif -%}
 {%- if weather.oakland -%}{%- assign weather_h = weather_h | plus: 27.8 -%}{%- endif -%}
 {%- if weather.berkeley_marina -%}{%- assign weather_h = weather_h | plus: 43.4 -%}{%- endif -%}
+{%- comment -%}-- The departure board is drawn when there is a commute it could
+still catch. On a Sunday there is none, and after nine the last thing the panel
+should be suggesting is a train into the city; both free its whole share of the
+rail. Named once here because the height arithmetic and the markup have to agree
+about it. --{%- endcomment -%}
+{%- assign bart_in_rail = true -%}
+{%- if is_sunday or is_evening -%}{%- assign bart_in_rail = false -%}{%- endif -%}
 {%- assign bart_h = 38.8 -%}
 {%- assign train_count = bart | size -%}
 {%- if bart_status == 'ok' and train_count > 0 -%}
@@ -140,6 +154,7 @@ a worse use of 472px than just putting the chores in it. --{%- endcomment -%}
 {%- if bd_count > 0 -%}{%- assign other_sections = other_sections | plus: 1 -%}{%- endif -%}
 {%- if eom_count > 0 -%}{%- assign other_sections = other_sections | plus: 1 -%}{%- endif -%}
 {%- if task_count > 0 -%}{%- assign other_sections = other_sections | plus: 1 -%}{%- endif -%}
+{%- if eod_count > 0 -%}{%- assign other_sections = other_sections | plus: 1 -%}{%- endif -%}
 
 {%- assign sunday_in_rail = false -%}
 {%- if sun_count > 0 and other_sections > 0 -%}
@@ -177,7 +192,7 @@ a worse use of 472px than just putting the chores in it. --{%- endcomment -%}
 {%- assign rail_h = weather_h -%}
 {%- if sunday_in_rail -%}
   {%- assign rail_h = rail_h | plus: 16 | plus: sunday_need -%}
-{%- elsif is_sunday == false -%}
+{%- elsif bart_in_rail -%}
   {%- assign rail_h = rail_h | plus: 16 | plus: bart_h -%}
 {%- endif -%}
 {%- assign rail_spare = budget | minus: rail_h | minus: 16 -%}
@@ -238,12 +253,16 @@ together in one pass ahead of the event sections rather than in reading order.
   {%- assign cols_eom = 1 -%}
   {%- assign cols_sunday = 1 -%}
   {%- assign cols_tasks = 1 -%}
+  {%- assign cols_eod = 1 -%}
 
-  {%- comment -%}-- Birthdays, the two checklists and tasks are all the same
-  shape: a heading over a run of plain lines, the last three carrying a
+  {%- comment -%}-- Birthdays, the three checklists and tasks are all the same
+  shape: a heading over a run of plain lines, all but birthdays carrying a
   checkbox. Walking them as one pass keeps the wrapping arithmetic in a single
-  place. --{%- endcomment -%}
-  {%- for pass in (1..4) -%}
+  place. The order here is not the order on screen — each pass only adds its
+  own height to the same total, and a section's gap is charged by count rather
+  than position — so the end-of-day list is appended rather than inserted at the
+  place it is actually drawn. --{%- endcomment -%}
+  {%- for pass in (1..5) -%}
     {%- assign items = NONE -%}
     {%- assign widest = 0 -%}
     {%- assign box_w = F | times: 0.8 | plus: ROW_GAP -%}
@@ -259,6 +278,8 @@ together in one pass ahead of the event sections rather than in reading order.
       {%- endunless -%}
     {%- when 4 -%}
       {%- if task_count > 0 -%}{%- assign items = tasks -%}{%- assign widest = task_widest -%}{%- endif -%}
+    {%- when 5 -%}
+      {%- if eod_count > 0 -%}{%- assign items = checklists.end_of_day -%}{%- assign widest = eod_widest -%}{%- endif -%}
     {%- endcase -%}
     {%- assign item_count = items | size -%}
     {%- if item_count > 0 -%}
@@ -282,6 +303,7 @@ together in one pass ahead of the event sections rather than in reading order.
       {%- when 2 -%}{%- assign cols_eom = cols -%}
       {%- when 3 -%}{%- assign cols_sunday = cols -%}
       {%- when 4 -%}{%- assign cols_tasks = cols -%}
+      {%- when 5 -%}{%- assign cols_eod = cols -%}
       {%- endcase -%}
       {%- if cols > 1 -%}
       {%- comment -%}-- The browser balances the columns, so the section is as
@@ -512,6 +534,24 @@ together in one pass ahead of the event sections rather than in reading order.
         </div>
       </div>
       {% endif %}
+      {% comment %}-- The evening list is placed here, directly under Birthdays and
+      above everything the day still had planned, because at nine at night it is the
+      only part of the column that is still asking anything of you. Tasks keep their
+      own heading further down rather than being replaced: what is undone at nine is
+      still undone, and hiding it does not finish it. --{% endcomment %}
+      {% if eod_count != 0 %}
+      <div>
+        <div class="label" style="display: block; margin: 0; padding: 0; font-size: {{ head_font }}px; line-height: 1.2;">End of Day Checklist</div>
+        <div style="padding-left: {{ INDENT }}px;{% if cols_eod > 1 %} column-count: {{ cols_eod }}; column-gap: {{ LIST_GAP }}px;{% endif %}">
+          {% for item in checklists.end_of_day %}
+          <div style="display: flex; align-items: baseline; gap: {{ ROW_GAP }}px; padding: 1px 0; border-bottom: 1px dashed #999; font-weight: normal; break-inside: avoid;">
+            <span style="display: inline-block; box-sizing: border-box; width: 0.8em; height: 0.8em; border: 0.13em solid black; border-radius: 0.13em; flex-shrink: 0; align-self: flex-start; margin-top: 0.3em;"></span>
+            <span style="flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere;">{{ item }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
       {% comment %}-- The events pipeline hands us the left column's event sections
       already ordered, already non-empty, and already sorted within themselves. A section
       whose tag was declared `heading` in tags.conf carries its own heading and needs no
@@ -604,7 +644,7 @@ together in one pass ahead of the event sections rather than in reading order.
         {% comment %}-- UV rides on the Weather heading rather than taking a row of its
         own: it is a single number, and the heading line is already half empty. --{% endcomment %}
         <div class="label" style="display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin: 0; padding: 0; line-height: 1.2;">
-          <span>Weather</span>
+          <span>{% if weather.target == "tomorrow" %}Tomorrow&#39;s Weather{% else %}Weather{% endif %}</span>
           {% if weather.uv %}<span style="font-weight: normal;">UV: <span style="font-weight: bold;">{{ weather.uv.max }}</span></span>{% endif %}
         </div>
         <div>
@@ -649,7 +689,7 @@ together in one pass ahead of the event sections rather than in reading order.
         </div>
       </div>
       {% endif %}
-      {% unless is_sunday %}
+      {% if bart_in_rail %}
       <div>
         <div class="label" style="display: block; margin: 0; padding: 0; line-height: 1.2;">BART</div>
         {% comment %}-- Sized to its own widest line — the two station names — rather
@@ -676,7 +716,7 @@ together in one pass ahead of the event sections rather than in reading order.
           {% endif %}
         </div>
       </div>
-      {% endunless %}
+      {% endif %}
       {% if promote != 0 %}
       {% comment %}-- The End of Month list, which the column could not hold,
       taking the blank space at the foot of the rail rather than dragging the

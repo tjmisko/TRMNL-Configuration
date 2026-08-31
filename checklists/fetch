@@ -13,8 +13,10 @@ extract_items() {
 
 SUNDAY=$(extract_items "$NOTES_DIRECTORY/templates/Sunday Checklist.md")
 END_OF_MONTH=$(extract_items "$NOTES_DIRECTORY/templates/End of Month Checklist.md")
+END_OF_DAY=$(extract_items "$NOTES_DIRECTORY/templates/End of Day Checklist.md")
 
 jq -n \
   --argjson sunday "$SUNDAY" \
   --argjson end_of_month "$END_OF_MONTH" \
-  '{sunday: $sunday, end_of_month: $end_of_month}'
+  --argjson end_of_day "$END_OF_DAY" \
+  '{sunday: $sunday, end_of_month: $end_of_month, end_of_day: $end_of_day}'

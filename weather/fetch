@@ -6,20 +6,56 @@ OAK_FORECAST_URL="https://api.weather.gov/gridpoints/MTR/90,106/forecast"
 OAK_HOURLY_URL="https://api.weather.gov/gridpoints/MTR/90,106/forecast/hourly"
 ALERTS_URL="https://api.weather.gov/alerts/active?zone=CAZ006,CAZ508"
 
-TODAY_23=$(date +"%Y-%m-%dT23:00:00")
+# ── Which day is being reported ──────────────────────────────────────
+# In the evening the forecast for the day that is ending has nothing left to
+# say, so the panel reports tomorrow instead and labels itself accordingly.
+# $IS_EVENING comes from ./update, which owns the clock for the whole run;
+# $WEATHER_TARGET overrides it outright, which is what the tests use.
+if [ -n "${WEATHER_TARGET:-}" ]; then
+  TARGET="$WEATHER_TARGET"
+elif [ "${IS_EVENING:-false}" = "true" ]; then
+  TARGET="tomorrow"
+else
+  TARGET="today"
+fi
+
+if [ "$TARGET" = "tomorrow" ]; then
+  TARGET_DATE=$(date -d "tomorrow" +"%Y-%m-%d")
+  # A floor as well as a ceiling: without it the rain window would sweep up
+  # every remaining hour of tonight and report it as tomorrow's.
+  WINDOW_FROM="${TARGET_DATE}T00:00:00"
+  # Match periods by date so "the daytime one" means tomorrow's, not the next
+  # one that happens to exist.
+  MATCH_DATE="$TARGET_DATE"
+else
+  TARGET_DATE=$(date +"%Y-%m-%d")
+  # Today keeps the original unanchored behaviour exactly: no floor on the rain
+  # window, and the first daytime period whatever its date. After sunset there
+  # is no daytime period left for today, and that first one is already
+  # tomorrow's — long-standing, and what makes the row survive the evening at
+  # all rather than going blank between sunset and the switch.
+  WINDOW_FROM=""
+  MATCH_DATE=""
+fi
+WINDOW_TO="${TARGET_DATE}T23:00:00"
 
 extract_forecast() {
   local period_json="$1"
   local hourly_json="$2"
-  local cutoff="$3"
-  jq -n --arg cutoff "$cutoff" \
+  local window_to="$3"
+  local window_from="$4"
+  local match_date="$5"
+  jq -n --arg to "$window_to" --arg from "$window_from" --arg day "$match_date" \
     --slurpfile periods <(printf '%s' "$period_json") \
     --slurpfile hourly <(printf '%s' "$hourly_json") '
+    # An empty $day means "first period of its kind, whatever its date", which
+    # is the original behaviour; a set $day pins both readings to that date.
+    def on_day: select($day == "" or (.startTime | startswith($day)));
     $periods[0].properties.periods as $p |
-    ($p | map(select(.isDaytime == true)) | .[0].temperature) as $high |
-    ($p | map(select(.isDaytime == false)) | .[0].temperature) as $low |
+    ($p | map(select(.isDaytime == true)  | on_day) | .[0].temperature) as $high |
+    ($p | map(select(.isDaytime == false) | on_day) | .[0].temperature) as $low |
     ($hourly[0].properties.periods
-      | map(select(.startTime < $cutoff))
+      | map(select(.startTime < $to and ($from == "" or .startTime >= $from)))
       | map(.probabilityOfPrecipitation.value // 0)
       | max // 0
     ) as $rain_chance |
@@ -43,13 +79,13 @@ OAK_HOURLY_OK=$?
 ALERTS_RAW=$(curl -sf -H "User-Agent: $UA" "$ALERTS_URL")
 
 if [ $SF_OK -eq 0 ] && [ $SF_HOURLY_OK -eq 0 ]; then
-  SF_FORECAST=$(extract_forecast "$SF_RAW" "$SF_HOURLY_RAW" "$TODAY_23")
+  SF_FORECAST=$(extract_forecast "$SF_RAW" "$SF_HOURLY_RAW" "$WINDOW_TO" "$WINDOW_FROM" "$MATCH_DATE")
 else
   SF_FORECAST="null"
 fi
 
 if [ $OAK_OK -eq 0 ] && [ $OAK_HOURLY_OK -eq 0 ]; then
-  OAK_FORECAST=$(extract_forecast "$OAK_RAW" "$OAK_HOURLY_RAW" "$TODAY_23")
+  OAK_FORECAST=$(extract_forecast "$OAK_RAW" "$OAK_HOURLY_RAW" "$WINDOW_TO" "$WINDOW_FROM" "$MATCH_DATE")
 else
   OAK_FORECAST="null"
 fi
@@ -93,23 +129,31 @@ if [ $BM_OK -eq 0 ]; then
   BERKELEY_MARINA=$(jq -n \
     --slurpfile fc <(printf '%s' "$BM_RAW") \
     --slurpfile obs <(printf '%s' "$BM_OBS_JSON") \
-    --argjson obs_age "$BM_OBS_AGE" '
+    --argjson obs_age "$BM_OBS_AGE" \
+    --arg day "$MATCH_DATE" '
     def kmh_to_kt: . * 0.539957;
     def mph_to_kt: . * 0.868976;
     def deg2compass:
       ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"]
       [(((. / 22.5) + 0.5) | floor) % 16];
     def mph_max: ([scan("[0-9]+") | tonumber] | max // 0);
+    def on_day: select($day == "" or (.startTime | startswith($day)));
     ($fc[0].properties.periods) as $p |
-    ($p | map(select(.isDaytime))       | .[0].temperature) as $high |
-    ($p | map(select(.isDaytime | not)) | .[0].temperature) as $low |
-    (($p[0].windSpeed // "") | mph_max | mph_to_kt | round) as $fc_kt |
-    ($p[0].windDirection // null) as $fc_dir |
+    ($p | map(select(.isDaytime)       | on_day) | .[0]) as $day_p |
+    ($p | map(select(.isDaytime | not) | on_day) | .[0]) as $night_p |
+    ($day_p.temperature) as $high |
+    ($night_p.temperature) as $low |
+    # Wind comes from the period being reported. For today that is the current
+    # one, as before; for tomorrow it is the daytime period of that date, since
+    # the live observation below describes a night that will be over by then.
+    (if $day == "" then $p[0] else ($day_p // $night_p) end) as $wind_p |
+    (($wind_p.windSpeed // "") | mph_max | mph_to_kt | round) as $fc_kt |
+    ($wind_p.windDirection // null) as $fc_dir |
     ((($obs[0] // {}).properties) // {}) as $o |
     ($o.windSpeed.value) as $spd |
     ($o.windGust.value) as $gust |
     ($o.windDirection.value) as $dir |
-    (($obs_age < 7200) and ($spd != null) and ($dir != null)) as $obs_ok |
+    (($day == "") and ($obs_age < 7200) and ($spd != null) and ($dir != null)) as $obs_ok |
     {
       high: $high,
       low: $low,
@@ -146,11 +190,11 @@ UV_RAW=$(curl -sf -G -H "User-Agent: $UA" "https://api.open-meteo.com/v1/forecas
   --data-urlencode "timezone=$UV_TZ" \
   --data "daily=uv_index_max" \
   --data "hourly=uv_index" \
-  --data "forecast_days=1")
+  --data "forecast_days=2")
 UV_OK=$?
 
 if [ $UV_OK -eq 0 ] && [ -n "$UV_RAW" ]; then
-  UV=$(printf '%s' "$UV_RAW" | jq '
+  UV=$(printf '%s' "$UV_RAW" | jq --arg day "$TARGET_DATE" '
     # WHO exposure bands, applied to the rounded index so the number and the
     # words never disagree (7.6 shows as "8 Very High", not "8 High").
     def band:
@@ -159,9 +203,12 @@ if [ $UV_OK -eq 0 ] && [ -n "$UV_RAW" ]; then
       elif . >= 6  then "High"
       elif . >= 3  then "Moderate"
       else "Low" end;
-    (.daily.uv_index_max[0] // null) as $daily_max |
+    # Two days are always requested and the reported one is picked by date, so
+    # the evening switch needs no second call and today is unaffected.
+    ((.daily.time | index($day)) // 0) as $i |
+    (.daily.uv_index_max[$i] // null) as $daily_max |
     ([.hourly.time, .hourly.uv_index] | transpose
-      | map(select(.[1] != null))
+      | map(select(.[1] != null and (.[0] | startswith($day))))
       | max_by(.[1])) as $peak_hour |
     if $daily_max == null then null else
       ($daily_max | round) as $rounded |
@@ -182,8 +229,12 @@ jq -n \
   --argjson sf_alerts "${SF_ALERTS:-[]}" \
   --argjson oak_alerts "${OAK_ALERTS:-[]}" \
   --argjson berkeley_marina "${BERKELEY_MARINA:-null}" \
-  --argjson uv "${UV:-null}" '
+  --argjson uv "${UV:-null}" \
+  --arg target "$TARGET" \
+  --arg target_date "$TARGET_DATE" '
   {
+    target: $target,
+    target_date: $target_date,
     sf: (if $sf_forecast == null then null else ($sf_forecast + {alerts: $sf_alerts}) end),
     oakland: (if $oak_forecast == null then null else ($oak_forecast + {alerts: $oak_alerts}) end),
     berkeley_marina: $berkeley_marina,

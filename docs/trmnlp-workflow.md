@@ -101,8 +101,11 @@ These variables are available in `full.liquid` via the polled `trmnl.json`:
 | `greetings` | string | `"Greetings from retend.app"` |
 | `is_sunday` | boolean | `true` when today is Sunday |
 | `is_last_day_of_month` | boolean | `true` on the last calendar day of the month |
+| `is_evening` | boolean | `true` from `EVENING_HOUR` (default 21) until the date rolls at midnight. Drives the end-of-day checklist, the BART suppression and the switch to tomorrow's weather |
 | `bart` | array | `[{"depart": "20:28", "arrive": "20:43"}, ...]`; empty only when there are genuinely no trains |
 | `bart_status` | string | `"ok"`, or `"error"` when the data could not be fetched — render "Unavailable" rather than an empty list |
+| `weather.target` | string | `"today"`, or `"tomorrow"` in the evening. The Weather heading reads "Tomorrow's Weather" when it is `tomorrow` |
+| `weather.target_date` | string | The date every figure below describes, `YYYY-MM-DD` |
 | `weather.sf` | object | `{"high": 62, "low": 54, "rain": true, "rain_chance": 32, "alerts": []}` |
 | `weather.oakland` | object | Same shape as `weather.sf` |
 | `weather.berkeley_marina` | object | `{"high": 62, "low": 57, "wind": {"dir": "W", "speed_kt": 10, "gust_kt": null, "source": "observed"}}` |
@@ -112,6 +115,7 @@ These variables are available in `full.liquid` via the polled `trmnl.json`:
 | `events` | array | Today's events as dashboard **sections**, `[{heading, tagged, events}]`, blended from `events/sources/*` and split by `events/tags.conf` (see `events/README.md`) |
 | `checklists.sunday` | array | Sunday checklist items |
 | `checklists.end_of_month` | array | End-of-month checklist items |
+| `checklists.end_of_day` | array | Evening checklist items, from `templates/End of Day Checklist.md`. Always populated; the template draws it only when `is_evening` |
 | `rain_alert.active` | boolean | `true` if rain is forecast in either city |
 | `rain_alert.chance` | number | Max rain chance across SF and Oakland |
 | `rain_alert.city` | string | City with the higher rain chance (`"San Francisco"` or `"Oakland"`) |
@@ -119,6 +123,39 @@ These variables are available in `full.liquid` via the polled `trmnl.json`:
 
 Access nested values with dot notation: `{{ weather.sf.high }}`.
 Access array elements with the `slice` filter: `{{ bart | slice: 0 }}`.
+
+## The evening switch
+
+From 21:00 until midnight the panel stops reporting the day that is ending and
+sets up the one that follows. Four things change at once, all keyed off the
+single `is_evening` flag that `./update` computes:
+
+| What | Daytime | Evening |
+|------|---------|---------|
+| End of Day Checklist | absent | drawn directly under Birthdays |
+| Departure board | drawn | suppressed; the rail's promotion machinery takes the space |
+| Weather | today | tomorrow, heading reads "Tomorrow's Weather" |
+| Tasks | in place | unchanged — pushed below the checklist, never hidden |
+
+Event pruning is *not* part of this: `events/filters/upcoming` drops finished
+events all day long, so the agenda thins out continuously and is usually near
+empty by the time the evening arrives on its own.
+
+`./update` sets `TZ` for the whole run, so this script and every fetch script it
+calls agree on what time it is. Knobs, all env-overridable:
+
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `PANEL_TZ` | `America/Los_Angeles` | The clock every date in the payload is computed against |
+| `EVENING_HOUR` | `21` | When the evening starts |
+| `WEATHER_TARGET` | unset | Forces `today` or `tomorrow`, overriding `is_evening`. For tests |
+| `EVENTS_NOW` | unset | `HH:MM` the pruning filter treats as now. For tests |
+
+Simulating an evening end to end:
+
+```sh
+EVENING_HOUR=0 EVENTS_NOW=21:30 ./update
+```
 
 ## Development Commands
 

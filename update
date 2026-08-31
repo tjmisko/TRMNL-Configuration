@@ -1,7 +1,22 @@
 #!/usr/bin/env bash
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 source "$SCRIPT_DIR/.env" 2>/dev/null
-export NOTES_DIRECTORY PROJECT_DIRECTORY
+# The panel is a wall clock for one place, so every date in it is computed in
+# that place's time rather than the host's. events/fetch already insisted on
+# this for itself ($EVENTS_TZ); setting TZ here puts the whole run — this
+# script and every fetch script it calls — on the same clock, which is what
+# makes "is it past nine" mean the same thing to all of them.
+PANEL_TZ="${PANEL_TZ:-America/Los_Angeles}"
+export TZ="$PANEL_TZ"
+
+# The evening. From EVENING_HOUR until the date rolls at midnight, the panel
+# stops reporting on the day that is ending and starts setting up the one that
+# follows: the end-of-day checklist appears, the departure board goes away, and
+# the weather switches to tomorrow's.
+EVENING_HOUR="${EVENING_HOUR:-21}"
+IS_EVENING=$([[ $(date +"%-H") -ge $EVENING_HOUR ]] && echo true || echo false)
+
+export NOTES_DIRECTORY PROJECT_DIRECTORY PANEL_TZ EVENING_HOUR IS_EVENING
 DAY_OF_MONTH=$(date +"%-d")
 DAYS_IN_MONTH=$(date -d "$(date +%Y-%m-01) +1 month -1 day" +"%-d")
 # Which occurrence of this weekday the date is: the 1st through 7th of any
@@ -43,7 +58,7 @@ BIRTHDAYS=$(validate_json "$("$SCRIPT_DIR"/birthday/fetch)" '[]' birthdays)
 TASKS=$(validate_json "$("$SCRIPT_DIR"/tasks/fetch)" '[]' tasks)
 WEATHER=$(validate_json "$("$SCRIPT_DIR"/weather/fetch)" '{}' weather)
 
-CHECKLISTS=$(validate_json "$("$SCRIPT_DIR"/checklists/fetch)" '{"sunday":[],"end_of_month":[]}' checklists)
+CHECKLISTS=$(validate_json "$("$SCRIPT_DIR"/checklists/fetch)" '{"sunday":[],"end_of_month":[],"end_of_day":[]}' checklists)
 
 # BART/fetch exits non-zero rather than emitting an empty array when it cannot
 # tell whether there are trains, so an outage renders as "unavailable" instead
@@ -65,6 +80,7 @@ jq -n \
   --arg week "$WEEK_STRING" \
   --argjson is_sunday "$IS_SUNDAY" \
   --argjson is_last_day_of_month "$IS_LAST_DAY_OF_MONTH" \
+  --argjson is_evening "$IS_EVENING" \
   --argjson day_of_year "$DAY_OF_YEAR" \
   --argjson days_to_go "$DAYS_TO_GO" \
   --argjson birthdays "$BIRTHDAYS" \
@@ -85,6 +101,7 @@ jq -n \
   events: $events,
   is_sunday: $is_sunday,
   is_last_day_of_month: $is_last_day_of_month,
+  is_evening: $is_evening,
   checklists: $checklists,
   weather: $weather,
   bart: $bart,
