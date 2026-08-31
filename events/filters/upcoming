@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# events/filters/upcoming — drop events that have already finished.
+#
+# Reads the tagged event array on stdin, prints the ones that have not yet
+# ended. The dashboard is a thing you glance at to decide what to do next, so an
+# event whose end time has passed is only taking up room the rest of the day
+# could use; by nine in the evening the agenda has usually emptied itself.
+#
+# The name is what SURVIVES the filter, not what it removes, and it is chosen to
+# sort after `tides`: filters run in filename order, and tides rewrites the Cal
+# Sailing lesson times from the club's live hours. Pruning has to see the times
+# that will actually be displayed, so it must run last. `expire` would have
+# sorted first and judged the sailing lessons on hours they were never shown.
+#
+# Kept regardless of the clock:
+#   - all-day events, which have no end to have passed
+#   - events with no end time, which nothing can prove are over
+#   - events whose end is earlier than their start, i.e. they run past midnight
+#
+# $EVENTS_NOW overrides the clock for tests, as $EVENTS_TODAY does the date.
+set -euo pipefail
+
+EVENTS_TZ="${EVENTS_TZ:-America/Los_Angeles}"
+NOW="${EVENTS_NOW:-$(TZ="$EVENTS_TZ" date +%H:%M)}"
+
+jq --arg now "$NOW" '
+  map(select(
+    (.all_day == true)
+    or (.end == null) or (.end == "")
+    or (.end < .start)
+    or (.end > $now)
+  ))
+'

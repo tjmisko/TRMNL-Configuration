@@ -17,6 +17,10 @@ sources/recurring (bash+jq)   sources/ics (Go binary)      ← produce
           filters/tides (Go binary)                        ← rewrite
             clamps `sailing` events to Cal Sailing's live hours
                     │
+                    ↓
+          filters/upcoming                                 ← rewrite
+            drops events whose end time has passed
+                    │
                     ↓  sort by tag, then time → de-duplicate → split into sections
 ```
 
@@ -225,6 +229,7 @@ filters alike — without deleting anything:
 recurring  on    # weekly/monthly notes from the vault
 ics        on    # .ics calendar feeds
 tides      off   # stop reconciling sailing times with the club's hours
+upcoming   off   # stop dropping events that have already ended
 ```
 
 The name is the executable's filename in `sources/` or `filters/`. `on` also
@@ -352,6 +357,30 @@ real vault.
 
 `events/vault-notes/` is gitignored. Keep it as a private scratch area for notes
 on their way into the vault if you find it useful; nothing reads it.
+
+## Dropping what is over (`filters/upcoming`)
+
+An event whose end time has passed is only taking up room the rest of the day
+could use, so it is removed. The agenda thins out as the day goes on and is
+usually near empty by evening, which is the point: what is left on screen is
+what you can still act on.
+
+Kept regardless of the clock, because none of them can be shown to be over:
+
+- all-day events, which have no end time
+- events with no end time at all
+- events whose end is earlier than their start, i.e. they run past midnight
+
+An event ending at exactly the current minute counts as finished. Set
+`EVENTS_NOW` to an `HH:MM` to test against a fixed clock, the way `EVENTS_TODAY`
+fixes the date.
+
+**Filters run in filename order, and this one must run after `tides`** — tides
+rewrites the Cal Sailing lesson times, and pruning has to judge the times that
+will actually be displayed. That ordering is the whole reason the file is called
+`upcoming` (what survives) rather than `expire` (what it removes): `expire`
+sorts before `tides` and would have judged the lessons on hours they were never
+shown.
 
 ## Sailing times and the tide (`filters/tides`)
 

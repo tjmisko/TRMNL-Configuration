@@ -20,3 +20,4 @@ ics        on    # .ics calendar feeds listed in events/feeds.conf
 
 # ── Filters ────────────────────────────────────────────────────────
 tides      on    # rewrite `sailing` events to Cal Sailing's live club hours
+upcoming   on    # drop events that have already ended (runs after tides)
