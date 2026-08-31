@@ -700,7 +700,8 @@ together in one pass ahead of the event sections rather than in reading order.
 </div>
 
 {%- comment -%}
-Two right-hand sections rather than one. Both are `.instance`, which ships as
+Two right-hand sections rather than one: the ISO week, and where today sits in
+the year. Both are `.instance`, which ships as
 `flex: 1 1 auto; text-align: right` — sized for being the bar's only tenant.
 Two of those split the slack and drift apart, and pinning them both to their
 content instead leaves them packed against the title, because a flex line with
@@ -714,13 +715,22 @@ The rule between them is a span with no content and no width carrying a single
 the cap height of the 16px face plus a little, so the rule reads as tall as the
 text rather than as tall as the bar.
 
-Widest realistic bar: "Last (Second) Wednesday, 30 September 2026" at 16px Inter
-is ~316px, the two sections ~205px, chrome and gaps ~70px — about 590 of 800.
+The second section is drawn only when `day_of_year` is there. Template and data
+deploy independently — the plugin to TRMNL, `update` to the host serving the
+JSON — so the panel will at times be running one half ahead of the other. A
+missing field would otherwise set "Day  ( To Go)" in the bar for as long as that
+lasted; the guard falls back to the week alone, which is what the bar said
+before, and takes the rule with it.
+
+Widest realistic bar: "Last (Fourth) Wednesday, 30 September 2026" at 16px Inter
+is ~354px, the two sections ~200px, chrome and gaps ~70px — about 625 of 800.
 {%- endcomment -%}
 <div class="title_bar">
   <img class="image" src="">
   <span class="title">{{ date }}</span>
   <span class="instance" style="flex: 0 0 auto; margin-left: auto;">{{ week }}</span>
+  {%- if day_of_year -%}
   <span class="instance" style="flex: 0 0 auto; align-self: center; width: 0; padding: 0; height: 18px; border-left: 1px solid currentColor;"></span>
-  <span class="instance" style="flex: 0 0 auto;">{{ days_until_new_year }} Day{% unless days_until_new_year == 1 %}s{% endunless %} Until {{ next_year }}</span>
+  <span class="instance" style="flex: 0 0 auto;">Day {{ day_of_year }} ({{ days_to_go }} To Go)</span>
+  {%- endif -%}
 </div>

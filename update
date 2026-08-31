@@ -20,10 +20,12 @@ DATE_STRING="$WEEKDAY_PREFIX $(date +"%A, %d %B %Y")"
 WEEK_STRING=$(date +"Week %V")
 IS_SUNDAY=$([[ $(date +"%u") == "7" ]] && echo true || echo false)
 IS_LAST_DAY_OF_MONTH=$([[ $(date +"%d") == $(date -d "$(date +%Y-%m-01) +1 month -1 day" +"%d") ]] && echo true || echo false)
-NEXT_YEAR=$(($(date +"%Y") + 1))
-# Both ends are pinned to UTC midnight so the subtraction is a whole number of
-# days regardless of any DST transition the interval happens to straddle.
-DAYS_UNTIL_NEW_YEAR=$((($(date -u -d "$NEXT_YEAR-01-01 UTC" +%s) - $(date -u -d "$(date +%F) UTC" +%s)) / 86400))
+# %j is the day of the year, so 31 December's is the length of the year — 365,
+# or 366 in a leap year — without having to work out which kind of year it is.
+# Days to go excludes today, so the pair always sums to the year's length.
+DAY_OF_YEAR=$(date +"%-j")
+DAYS_IN_YEAR=$(date -d "$(date +%Y)-12-31" +"%-j")
+DAYS_TO_GO=$((DAYS_IN_YEAR - DAY_OF_YEAR))
 
 validate_json() {
   local raw="$1"
@@ -63,8 +65,8 @@ jq -n \
   --arg week "$WEEK_STRING" \
   --argjson is_sunday "$IS_SUNDAY" \
   --argjson is_last_day_of_month "$IS_LAST_DAY_OF_MONTH" \
-  --argjson next_year "$NEXT_YEAR" \
-  --argjson days_until_new_year "$DAYS_UNTIL_NEW_YEAR" \
+  --argjson day_of_year "$DAY_OF_YEAR" \
+  --argjson days_to_go "$DAYS_TO_GO" \
   --argjson birthdays "$BIRTHDAYS" \
   --argjson tasks "$TASKS" \
   --argjson events "$EVENTS" \
@@ -76,8 +78,8 @@ jq -n \
   greetings: $greetings,
   date: $date,
   week: $week,
-  next_year: $next_year,
-  days_until_new_year: $days_until_new_year,
+  day_of_year: $day_of_year,
+  days_to_go: $days_to_go,
   birthdays: $birthdays,
   tasks: $tasks,
   events: $events,
